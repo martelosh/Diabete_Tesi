@@ -53,19 +53,13 @@ def evaluate_models_cross_validation(x_train, y_train, n_splits=5, random_state=
         "LightGBM": lightgbm_model
     }
 
-    # Inizializzazione del KFold
     k_fold = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
 
     results = {}
-    print("Inizio valutazione dei modelli con K-Fold Cross-Validation (accuratezza):")
-    print("-" * 70)
 
     for name, model_instance in models_to_evaluate.items():
         print(f"Valutazione di: {name}...")
         scores = cross_val_score(model_instance, x_train, y_train, cv=k_fold, scoring='accuracy', n_jobs=-1) # n_jobs=-1 usa tutti i core disponibili
         mean_accuracy = scores.mean()
         results[name] = mean_accuracy
-        print(f"  {name} = {mean_accuracy:.4f}") # Formattazione per 4 cifre decimali
-        print("-" * 70)
-
     return results
