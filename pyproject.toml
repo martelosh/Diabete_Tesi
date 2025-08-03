@@ -4,4 +4,10 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "keras>=3.11.1",
+    "pymysql>=1.1.1",
+    "python-dotenv>=1.1.1",
+    "sqlalchemy>=2.0.42",
+    "tuner>=1.0.0b2",
+]

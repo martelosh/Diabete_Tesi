@@ -1,0 +1,66 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# === Virtual environments ===
+.env/
+.venv/
+venv/
+ENV/
+env/
+pip-log.txt
+
+# === Jupyter Notebooks Checkpoints ===
+.ipynb_checkpoints/
+
+# === OS files ===
+.DS_Store
+Thumbs.db
+
+# === Logs and cache ===
+*.log
+*.tmp
+*.bak
+.cache/
+*.sqlite3
+
+# === IDE and Editor ===
+.vscode/
+.idea/
+*.swp
+
+# === Data files ===
+*.csv
+*.tsv
+*.xls
+*.xlsx
+*.parquet
+*.h5
+*.db
+
+# If you want to keep specific data:
+# !data/keep_this_file.csv
+
+# === Models and weights ===
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.onnx
+models/
+
+# === Environment files (optional) ===
+.env
+.env.*
+
+# === Config files (optional) ===
+*.ini
+*.cfg
+*.toml
+*.yml
+*.yaml
