@@ -25,7 +25,9 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     df_clean = df.dropna()
     numeric_cols = df_clean.select_dtypes(include='number').columns
     scaler = StandardScaler()
-    df_clean[numeric_cols] = scaler.fit_transform(df_clean[numeric_cols])
+    for col in numeric_cols:
+        if df_clean[col].nunique() > 10:
+            df_clean[numeric_cols] = scaler.fit_transform(df_clean[numeric_cols])
     return df_clean
 
 def import_dataframe_to_db(df: pd.DataFrame, table_name: str, engine):
