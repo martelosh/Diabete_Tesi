@@ -26,7 +26,7 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     numeric_cols = df_clean.select_dtypes(include='number').columns
     scaler = StandardScaler()
     for col in numeric_cols:
-        if df_clean[col].nunique() > 10:
+        if df_clean[col].nunique() > 13:  # Normalizza solo le colonne con più di 13 valori unici
             df_clean[numeric_cols] = scaler.fit_transform(df_clean[numeric_cols])
     return df_clean
 
