@@ -23,6 +23,7 @@ test_connection(engine)
 
 df = load_data_from_csv(csv_path)
 df_clean = preprocess_data(df)
+import_dataframe_to_db(df_clean, table_name="diabetes_data", engine=engine)
 
 x_train, x_test, y_train, y_test = split_data(df_clean, target_column="Diabetes_012")
 
