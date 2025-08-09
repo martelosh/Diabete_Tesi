@@ -15,6 +15,25 @@ from tensorflow.keras.layers import Dense, Dropout
 from tensorflow.keras.optimizers import Adam
 from tensorflow import keras
 
+import json
+import pickle
+from pathlib import Path
+from sklearn.preprocessing import StandardScaler
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+ARTIFACTS_DIR = PROJECT_ROOT / "data" / "grid_search_results"
+ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+
+def _save_scaler_and_meta(scaler, feature_order, use_scaler: bool):
+    # evita l'ambiguità: feature_order può essere un pandas.Index
+    fo = list(feature_order) if feature_order is not None else None
+    meta = {"use_scaler": bool(use_scaler), "feature_order": fo}
+    with open(ARTIFACTS_DIR / "model_meta.json", "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+    if scaler is not None:
+        with open(ARTIFACTS_DIR / "scaler.pkl", "wb") as f:
+            pickle.dump(scaler, f)
+
 
 def split_data(df: pd.DataFrame, target_column: str, test_size: float = 0.2, random_state: int = 42):
     """Divide il dataset in training e test set."""
@@ -78,7 +97,17 @@ def evaluate_models_cross_validation(x_train, y_train, n_splits=5, random_state=
 
 
 def tune_keras_model(x_train, y_train, x_val, y_val, max_epochs=50):
-    """Esegue tuning e training di un modello Keras e restituisce il migliore e la sua accuratezza."""
+    """
+    Esegue tuning e training di un modello Keras su dati SCALATI.
+    Salva scaler e meta per l'inference.
+    """
+    # 1) Scaling su TUTTE le feature numeriche (qui lo applichiamo tutto per semplicità)
+    scaler = StandardScaler()
+    x_train_s = scaler.fit_transform(x_train)
+    x_val_s = scaler.transform(x_val)
+
+    # salva scaler + ordine colonne (servirà in inference)
+    _save_scaler_and_meta(scaler, x_train.columns, use_scaler=True)
 
     def build_model(hp):
         model = Sequential()

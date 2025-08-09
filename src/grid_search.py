@@ -53,6 +53,9 @@ def run_grid_search_and_save(estimator, param_grid, x_train, y_train, model_name
 
     grid_search.fit(x_train, y_train)
 
+    best_score = float(grid_search.best_score_)  # accuracy media CV
+    _best_to_meta(model_name=model_name, score=best_score)
+
     best_params = grid_search.best_params_
     print(f"Migliori parametri trovati: {best_params}")
 
@@ -65,3 +68,20 @@ def run_grid_search_and_save(estimator, param_grid, x_train, y_train, model_name
     print(f"Modello salvato in {model_file}")
 
     return best_model, grid_search
+
+import json
+from pathlib import Path
+
+def _best_to_meta(model_name: str, score: float):
+    """Aggiorna data/grid_search_results/model_meta.json con info sklearn."""
+    artifacts = Path(__file__).resolve().parent.parent / "data" / "grid_search_results"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    meta_path = artifacts / "model_meta.json"
+
+    meta = {}
+    if meta_path.exists():
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+
+    meta["sklearn_model"] = model_name
+    meta["sklearn_score"] = score
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")

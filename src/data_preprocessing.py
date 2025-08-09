@@ -34,3 +34,9 @@ def import_dataframe_to_db(df: pd.DataFrame, table_name: str, engine):
     """Importa un DataFrame in una tabella del database (sovrascrive se esiste)."""
     df.to_sql(name=table_name, con=engine, if_exists='replace', index=False)
     print(f"Dati importati con successo nella tabella '{table_name}'")
+
+
+def append_dataframe_to_db(df: pd.DataFrame, table_name: str, engine):
+    """Append, senza cancellare ciò che c’è già."""
+    df.to_sql(name=table_name, con=engine, if_exists='append', index=False)
+    print(f"Dati aggiunti alla tabella '{table_name}'")
