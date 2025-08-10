@@ -1,133 +1,216 @@
+# streamlit_prod/main_prod.py
 import sys
 from pathlib import Path
+from datetime import datetime, timezone
+
+import numpy as np
 import pandas as pd
 import streamlit as st
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]  # <-- root progetto
-sys.path.append(str(PROJECT_ROOT)) 
+# ========== PATH & IMPORT ==========
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from src.utils import load_best_model, preprocess_for_inference  # noqa: E402
 
+# ========== PAGE CONFIG & THEME ==========
 st.set_page_config(page_title="Valutazione Rischio Diabete", page_icon="🩺", layout="wide")
-st.markdown("""<style>
-section[data-testid="stSidebar"]{display:none}header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
+st.markdown("""
+<style>
+/* Layout pulito */
+section[data-testid="stSidebar"]{display:none}
+header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
 div.block-container{padding:2rem 0}
-.hero{border-radius:28px;padding:clamp(1.6rem,2.5vw,2.6rem);border:1px solid rgba(0,0,0,.06);
-background:radial-gradient(1200px 600px at 8% 10%, rgba(0,120,255,.10), transparent 60%),
-radial-gradient(1000px 500px at 90% 30%, rgba(255,60,140,.10), transparent 60%),
-linear-gradient(180deg, rgba(255,255,255,.94), rgba(255,255,255,.88));box-shadow:0 14px 44px rgba(0,0,0,.08)}
-#floating-chat{position:fixed;right:24px;bottom:24px;z-index:9999}
-#floating-chat button{border-radius:999px;padding:14px 16px;font-weight:800;border:1px solid rgba(0,0,0,.1);background:#fff;box-shadow:0 14px 30px rgba(0,0,0,.15);cursor:pointer}
-.chat-panel{position:fixed;right:24px;bottom:90px;z-index:9998;width:min(440px,94vw);max-height:72vh;overflow:auto;background:#fff;
-border:1px solid rgba(0,0,0,.10);border-radius:18px;box-shadow:0 22px 52px rgba(0,0,0,.22);padding:.9rem}
-#chat-teaser{position:fixed;right:88px;bottom:110px;z-index:9999;max-width:min(380px,72vw);background:#fff;color:#111;
-border:1px solid rgba(0,0,0,.12);border-radius:14px;box-shadow:0 16px 40px rgba(0,0,0,.18);padding:10px 12px;font-size:.95rem;line-height:1.35}
-#chat-teaser:after{content:"";position:absolute;right:-10px;bottom:14px;border:10px solid;border-color:transparent transparent transparent #fff}
-.teaser-actions{display:flex;gap:8px;margin-top:6px;justify-content:flex-end}
-@media (prefers-color-scheme: dark){.hero{border-color:rgba(255,255,255,.08);background:linear-gradient(180deg,#0f1117,#0f121a);color:#e9e9ea}
-.chat-panel,#floating-chat button,#chat-teaser{background:#101318;color:#e9e9ea;border-color:rgba(255,255,255,.08)}
-#chat-teaser:after{border-color:transparent transparent transparent #101318}}
-</style>""", unsafe_allow_html=True)
 
-# -------- helper locali (no LLM) --------
+/* Hero */
+.hero{
+  border-radius:28px;padding:clamp(1.6rem,2.5vw,2.6rem);
+  border:1px solid rgba(0,0,0,.06);
+  background:
+    radial-gradient(1200px 600px at 8% 10%, rgba(0,120,255,.10), transparent 60%),
+    radial-gradient(1000px 500px at 90% 30%, rgba(255,60,140,.10), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,.94), rgba(255,255,255,.88));
+  box-shadow:0 14px 44px rgba(0,0,0,.08);
+}
+.hero h1{margin:0 0 .5rem}
+
+/* Cards */
+.card{
+  border:1px solid rgba(0,0,0,.08); background:#fff;
+  border-radius:18px; box-shadow:0 8px 22px rgba(0,0,0,.06);
+  padding:1rem 1.2rem; margin-bottom:.8rem;
+}
+.badge{display:inline-block;padding:.25rem .6rem;border-radius:999px;border:1px solid rgba(0,0,0,.1);font-size:.8rem;background:#fff}
+
+/* Buttons */
+.stButton>button[kind="primary"]{border-radius:14px;font-weight:700;padding:.7rem 1rem;box-shadow:0 10px 24px rgba(0,0,0,.10)}
+.stButton>button{border-radius:12px;font-weight:600}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark){
+  .hero{border-color:rgba(255,255,255,.08);background:linear-gradient(180deg,#0f1117,#0f121a);color:#e9e9ea}
+  .card{background:#101318;color:#e9e9ea;border-color:rgba(255,255,255,.08)}
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ========== COSTANTI/CONTATTI ==========
 CONTACTS_CSV = PROJECT_ROOT / "data" / "ospedali_milano_comuni_mapping.csv"
 
-def get_nearby_contacts(comune: str, top: int = 5):
+@st.cache_data(show_spinner=False)
+def load_contacts():
     if not CONTACTS_CSV.exists():
-        return []
+        return pd.DataFrame(), []
     df = pd.read_csv(CONTACTS_CSV)
+    # normalizza nomi colonne in minuscolo
     df.columns = [c.lower() for c in df.columns]
-    if "comune" not in df.columns:
-        return []
-    m = df[df["comune"].astype(str).str.contains(comune, case=False, na=False)].head(top)
-    return m.to_dict(orient="records")
+    # mappa alcune varianti comuni
+    rename_map = {"città":"comune", "citta":"comune", "comuni":"comune"}
+    df = df.rename(columns={k:v for k,v in rename_map.items() if k in df.columns})
+    comuni = sorted(df["comune"].dropna().astype(str).unique()) if "comune" in df.columns else []
+    return df, comuni
 
-def make_teaser(pred: int, prob: float) -> str:
-    label = {0: "nessun diabete", 1: "pre-diabete", 2: "diabete"}.get(int(pred), "")
-    return (
-        f"Risultato stimato: **{pred}** ({label}) — probabilità **{prob*100:.1f}%**.\n"
-        "Questo non sostituisce un parere medico.\n\n"
-        "Scrivimi il tuo **comune** per mostrarti i contatti utili e aiutarti a prenotare."
+contacts_df, comuni_options = load_contacts()
+
+# ========== SESSION ==========
+st.session_state.setdefault("view", "home")
+st.session_state.setdefault("last_pred", None)
+st.session_state.setdefault("last_prob", None)
+st.session_state.setdefault("selected_comune", None)
+
+def go(view: str): st.session_state.view = view
+
+# ========== MODEL UTILS ==========
+def predict_with_proba(model, model_type: str, X: pd.DataFrame):
+    if model_type == "sklearn":
+        if hasattr(model, "predict_proba"):
+            p = model.predict_proba(X)[0]; c = int(np.argmax(p)); return c, float(p[c])
+        if hasattr(model, "decision_function"):
+            s = model.decision_function(X)
+            if s.ndim == 1:
+                p1 = 1/(1+np.exp(-s[0])); c = int(p1 >= .5); return c, float(p1 if c else 1-p1)
+            p = np.exp(s[0]-np.max(s[0])); p/=p.sum(); c = int(np.argmax(p)); return c, float(p[c])
+        return int(model.predict(X)[0]), 0.50
+    p = model.predict(X, verbose=0)[0]; c = int(np.argmax(p)); return c, float(p[c])
+
+# ========== HOME ==========
+def render_home():
+    st.markdown(
+        """<div class="hero">
+           <h1>🩺 Valutazione del Rischio Diabete</h1>
+           <p class="small">Compila il form: ottieni la <b>classe (0/1/2)</b> e la <b>probabilità</b>. Poi scegli il tuo <b>comune</b> per vedere i contatti utili.</p>
+           </div>""",
+        unsafe_allow_html=True,
     )
+    st.write("")
+    col1, col2, col3 = st.columns([1,1,1.2])
+    with col1:
+        st.markdown("### 🎯 Perché\n- Screening rapido\n- Probabilità oltre la classe\n- Supporto pratico")
+    with col2:
+        st.markdown("### 🔒 Privacy\nI dati sono usati solo per questa valutazione.\nNon sostituisce un consulto medico.")
+    with col3:
+        st.markdown("### ⚙️ Come funziona\n1) Compila il form\n2) Vedi risultato+prob\n3) Seleziona comune per contatti")
+    st.write("")
+    if st.button("📝 Apri il form", type="primary", use_container_width=True):
+        go("form")
 
-# -------- stato condiviso chat --------
-for k, v in {"last_pred":None, "last_prob":None, "messages":[], "chat_open":False,
-             "teaser_message":None, "show_teaser":False}.items():
-    st.session_state.setdefault(k, v)
+# ========== FORM ==========
+def render_form():
+    top = st.columns([1,3])[0]
+    if top.button("⬅️ Torna alla Home"): go("home"); st.stop()
 
-# -------- HOME --------
-st.markdown("""<div class="hero"><h1>🩺 Valutazione del Rischio Diabete</h1>
-<p class="small">Compila il form: ottieni classe (0/1/2) e <b>probabilità</b>. L’assistente ti aiuta a prenotare.</p></div>""",
-            unsafe_allow_html=True)
-st.write("")
-c1, c2, c3 = st.columns(3)
-with c1: st.markdown("### 🎯 Perché\n- Screening rapido\n- Probabilità oltre la classe\n- Supporto prenotazioni")
-with c2: st.markdown("### 🔒 Privacy\nUso limitato a questa valutazione.\nNon sostituisce un medico.")
-with c3: st.markdown("### ⚙️ Passi\n1) Form\n2) Risultato+prob\n3) Chat")
+    st.title("📋 Valutazione personale")
+    st.caption("Compila i campi. Il BMI è calcolato automaticamente.")
 
-if st.button("📝 Apri il form", type="primary", use_container_width=True):
-    try: st.switch_page("pages/1_Form.py")
-    except Exception: st.info("Apri il form dal menu delle pagine.")
+    s=lambda t: st.selectbox(t,[0,1]); sl=lambda t,a,b,d: st.slider(t,a,b,d)
+    c1,c2=st.columns(2)
+    with c1:
+        gender=s("Sesso (0=femmina, 1=maschio)"); age=sl("Età",18,90,40)
+        highbp=s("Pressione alta?"); highchol=s("Colesterolo alto?"); cholcheck=s("Controllo colesterolo (5 anni)?")
+        smoker=s("Fumi?"); stroke=s("Ictus in passato?"); heartdisease=s("Malattie cardiache?")
+        physactivity=s("Attività fisica regolare?"); fruits=s("Frutta regolare?")
+    with c2:
+        veggies=s("Verdura regolare?"); hvyalcoh=s("Consumo elevato di alcol?"); anyhealthcare=s("Accesso a servizi sanitari?")
+        nomedicalcare=s("Eviti cure per costi?"); genhlth=sl("Salute generale (1 ottima – 5 pessima)",1,5,3)
+        menthlth=sl("Giorni problemi mentali (30)",0,30,2); physhlth=sl("Giorni problemi fisici (30)",0,30,2)
+        diffwalk=s("Difficoltà a camminare?"); education=sl("Istruzione (1–6)",1,6,4); income=sl("Reddito (1–8)",1,8,4)
+    b1,b2=st.columns(2)
+    with b1: peso=st.number_input("Peso (kg)",30.0,250.0,70.0,0.5)
+    with b2: h=st.number_input("Altezza (cm)",100.0,220.0,170.0,0.5)
+    bmi = peso/((max(h,.0001)/100)**2); st.caption(f"👉 BMI: **{bmi:.2f}**")
 
-# -------- CHAT floating (anche da Home) --------
-def render_chat():
-    st.markdown('<div id="floating-chat"><form><button type="submit" name="chat" value="toggle">💬</button></form></div>', unsafe_allow_html=True)
-    qp = st.query_params
-    if qp.get("chat") == "toggle":
-        if st.session_state.last_pred is None:
-            st.session_state.update(teaser_message="Per iniziare, compila il form.", show_teaser=True, chat_open=False)
-        else:
-            st.session_state.update(chat_open=not st.session_state.chat_open, show_teaser=False)
-        st.query_params.clear()
-    if qp.get("chat") == "open":
-        if st.session_state.last_pred is None:
-            st.session_state.update(teaser_message="Prima compila il form.", show_teaser=True, chat_open=False)
-        else:
-            st.session_state.update(chat_open=True, show_teaser=False)
-        st.query_params.clear()
-    if qp.get("teaser") == "close":
-        st.session_state.show_teaser = False; st.query_params.clear()
+    if st.button("🔎 Calcola risultato", type="primary"):
+        rec = pd.DataFrame([{
+            "HighBP":int(highbp),"HighChol":int(highchol),"CholCheck":int(cholcheck),"BMI":round(float(bmi),1),
+            "Smoker":int(smoker),"Stroke":int(stroke),"HeartDiseaseorAttack":int(heartdisease),"PhysActivity":int(physactivity),
+            "Fruits":int(fruits),"Veggies":int(veggies),"HvyAlcoholConsump":int(hvyalcoh),"AnyHealthcare":int(anyhealthcare),
+            "NoDocbcCost":int(nomedicalcare),"GenHlth":int(genhlth),"MentHlth":int(menthlth),"PhysHlth":int(physhlth),
+            "DiffWalk":int(diffwalk),"Sex":int(gender),"Age":int(age),"Education":int(education),"Income":int(income),
+        }])
 
-    # teaser
-    if st.session_state.show_teaser and not st.session_state.chat_open and st.session_state.teaser_message:
-        text = st.session_state.teaser_message
-        if len(text) > 240: text = text[:235].rstrip() + "…"
-        actions = ('<button type="submit" name="chat" value="open">Apri chat</button>'
-                   '<button type="submit" name="teaser" value="close">Chiudi</button>') \
-                  if st.session_state.last_pred is not None else \
-                  ('<button type="submit" name="chat" value="toggle">Compila il form</button>'
-                   '<button type="submit" name="teaser" value="close">Chiudi</button>')
-        st.markdown(f'<div id="chat-teaser"><div>{text}</div><div class="teaser-actions"><form>{actions}</form></div></div>',
-                    unsafe_allow_html=True)
+        try:
+            model, model_type, meta = load_best_model()
+            X = preprocess_for_inference(rec, meta)
+            cls, prob = predict_with_proba(model, model_type, X)
+        except Exception as e:
+            st.error(f"Errore durante la predizione: {e}")
+            return
 
-    # pannello chat
-    if st.session_state.chat_open and st.session_state.last_pred is not None:
-        st.markdown('<div class="chat-panel">**Assistente**  \n<small>Non sostituisce un consulto medico.</small><br/><br/>',
-                    unsafe_allow_html=True)
-        for m in st.session_state.messages:
-            with st.chat_message(m["role"]): st.markdown(m["content"])
+        st.session_state.last_pred = cls
+        st.session_state.last_prob = prob
+        st.success(f"Risultato: **{cls}**  (0=No, 1=Pre, 2=Diabete)")
+        st.info(f"Probabilità della classe predetta: **{prob*100:.1f}%**")
 
-        if prompt := st.chat_input("Scrivi un messaggio…"):
-            st.session_state.messages.append({"role":"user","content":prompt})
-            reply = None
-            comune = prompt.strip()
-            if len(comune) >= 2 and any(c.isalpha() for c in comune):
-                contacts = get_nearby_contacts(comune)
-                if contacts:
-                    rows = []
-                    for c in contacts:
-                        c = {k.lower(): v for k, v in c.items()}  # normalizza chiavi
-                        r = f"- **{c.get('struttura','Struttura')}**"
-                        if c.get("indirizzo"): r += f" — {c['indirizzo']}"
-                        if c.get("telefono"):  r += f" — 📞 {c['telefono']}"
-                        if c.get("tipo"):      r += f"  \n  _{c['tipo']}_"
-                        rows.append(r)
-                    reply = "**Contatti utili nella tua zona**:\n" + "\n".join(rows)
+    # — Sezione contatti (sempre visibile dopo il calcolo; altrimenti disabilitata)
+    st.write("---")
+    st.subheader("📍 Prenota vicino a te")
+    if contacts_df.empty or not comuni_options:
+        st.warning("Database contatti non trovato. Assicurati di avere `data/ospedali_milano_comuni_mapping.csv`.")
+        return
 
-            if not reply:
-                reply = make_teaser(st.session_state.last_pred or 0, st.session_state.last_prob or 0.0)
+    disable_select = st.session_state.last_pred is None
+    placeholder = "Cerca il tuo comune…" if not disable_select else "Prima calcola il risultato"
+    # selectbox ha la ricerca integrata
+    selected = st.selectbox("Seleziona il comune", comuni_options, index=None, placeholder=placeholder, disabled=disable_select)
+    if selected:
+        st.session_state.selected_comune = selected
 
-            st.session_state.messages.append({"role":"assistant","content":reply})
-            with st.chat_message("assistant"): st.markdown(reply)
+    if st.session_state.selected_comune:
+        sub = contacts_df[contacts_df["comune"].astype(str).str.lower() == st.session_state.selected_comune.lower()]
+        if sub.empty:
+            st.info("Nessun contatto trovato per il comune selezionato.")
+            return
 
-        st.markdown('</div>', unsafe_allow_html=True)
+        # mostra come card carine
+        st.markdown("#### Strutture e contatti")
+        for _, row in sub.iterrows():
+            struttura = str(row.get("struttura", "Struttura")).strip()
+            indirizzo = str(row.get("indirizzo", "")).strip()
+            telefono  = str(row.get("telefono", "")).strip()
+            tipo      = str(row.get("tipo", "")).strip()
 
-render_chat()
+            st.markdown(
+                f"""
+                <div class="card">
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+                    <div style="font-weight:700">{struttura}</div>
+                    {'<span class="badge">'+tipo+'</span>' if tipo else ''}
+                  </div>
+                  <div style="opacity:.9;margin-top:.25rem">{indirizzo or '—'}</div>
+                  <div style="margin-top:.25rem">{'📞 '+telefono if telefono else ''}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        # scarica CSV filtrato
+        csv_bytes = sub.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ Scarica contatti (CSV)", csv_bytes, file_name=f"contatti_{st.session_state.selected_comune}.csv")
+
+# ========== ROUTING ==========
+if st.session_state.view == "home":
+    render_home()
+elif st.session_state.view == "form":
+    render_form()
+else:
+    go("home"); render_home()
