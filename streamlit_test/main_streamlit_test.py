@@ -7,9 +7,9 @@ import pandas as pd
 import streamlit as st
 
 # === PATH PROGETTO / IMPORT ===
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[1]  # <-- root del progetto
 if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))   # aggiungo la root, NON "/src"
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.utils import load_best_model, predict_with_model, preprocess_for_inference  # noqa: E402
 
@@ -92,7 +92,7 @@ def render_home():
     with c3: st.markdown("### 🔒 Privacy\nDati di test salvati in `data/training_feedback.csv`.")
     st.write("")
     a, b, _ = st.columns([1,1,1])
-    with a: 
+    with a:
         if st.button("📝 Apri Form", type="primary", use_container_width=True): go("form")
     with b:
         if st.button("📈 Apri Monitoraggio", use_container_width=True): go("monitor")
@@ -235,6 +235,27 @@ def _build_reports_inline():
     cm.to_csv(METRICS_DIR / "confusion_matrix_overall.csv")
     return True, "Report generati/aggiornati."
 
+def _run_reports_safe():
+    """Chiama il builder esterno (se presente) senza aspettarsi un return specifico."""
+    if not REPORTS_EXTERNAL:
+        return _build_reports_inline()
+    try:
+        # Prova con keyword esplicita (per puntare a data/training_feedback.csv)
+        res = build_reports(feedback_csv=FEEDBACK)
+        return True, "Report generati/aggiornati." if res is None else (True, str(res))
+    except TypeError:
+        # firma diversa: prova posizionale o senza argomenti
+        try:
+            res = build_reports(FEEDBACK)
+            return True, "Report generati/aggiornati." if res is None else (True, str(res))
+        except TypeError:
+            res = build_reports()
+            return True, "Report generati/aggiornati." if res is None else (True, str(res))
+    except FileNotFoundError as e:
+        return False, str(e)
+    except Exception as e:
+        return False, f"Errore nella generazione report: {e}"
+
 def render_monitor():
     st.markdown('<div class="topbar">', unsafe_allow_html=True)
     if st.button("⬅️ Home"): go("home"); st.stop()
@@ -247,28 +268,22 @@ def render_monitor():
 
     # genera report se mancano
     if not (weekly_path.exists() or by_model_path.exists() or cm_path.exists()):
-        if REPORTS_EXTERNAL:
-            try:
-                ok, msg = build_reports()
-            except TypeError:
-                ok, msg = build_reports(DATA_DIR)  # se la tua funzione accetta un path
-        else:
-            ok, msg = _build_reports_inline()
+        if not FEEDBACK.exists():
+            st.info("Nessun feedback ancora. Vai al Form, salva un caso, poi torna qui.")
+            return
+        ok, msg = _run_reports_safe()
         (st.success if ok else st.warning)(msg)
 
     # bottone aggiorna
     if st.button("🔄 Aggiorna report"):
-        if REPORTS_EXTERNAL:
-            try:
-                ok, msg = build_reports()
-            except TypeError:
-                ok, msg = build_reports(DATA_DIR)
+        if not FEEDBACK.exists():
+            st.warning("Nessun feedback trovato. Salva almeno un caso dal Form.")
         else:
-            ok, msg = _build_reports_inline()
-        (st.success if ok else st.warning)(msg)
+            ok, msg = _run_reports_safe()
+            (st.success if ok else st.warning)(msg)
 
     # UI
-    if weekly_path.exists():
+    if (METRICS_DIR / "weekly_report.csv").exists():
         weekly = pd.read_csv(weekly_path, parse_dates=["week_start"])
         st.subheader("Andamento settimanale")
         if not weekly.empty:
