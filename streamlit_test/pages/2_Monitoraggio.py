@@ -6,7 +6,7 @@ import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(PROJECT_ROOT / "src"))
-from metrics import build_weekly_report  # noqa: E402
+from src.from_streamlit.metrics_report import build_weekly_report
 
 st.set_page_config(page_title="Monitoraggio modello", page_icon="📈", layout="centered")
 st.title("📈 Monitoraggio modello")

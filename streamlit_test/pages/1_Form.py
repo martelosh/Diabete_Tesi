@@ -7,7 +7,7 @@ import streamlit as st
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(PROJECT_ROOT / "src"))
-from utils import load_best_model, predict_with_model, preprocess_for_inference  # noqa: E402
+from src.utils import load_best_model, predict_with_model, preprocess_for_inference  # noqa: E402
 
 st.set_page_config(page_title="Form rischio diabete", page_icon="📝", layout="centered")
 st.title("📝 Form di autovalutazione")
@@ -34,12 +34,12 @@ def _inputs():
     peso=st.number_input("Peso (kg)",30.0,250.0,70.0,0.5); h=st.number_input("Altezza (cm)",100.0,220.0,170.0,0.5)
     bmi=(peso/((h/100)**2)) if h>0 else 0.0; st.write(f"👉 BMI: **{bmi:.2f}**")
     return pd.DataFrame([{
-        "HighBP":int(highbp),"HighChol":int(highchol),"CholCheck":int(cholcheck),"BMI":round(float(bmi),1),
-        "Smoker":int(smoker),"Stroke":int(stroke),"HeartDiseaseorAttack":int(heartdisease),"PhysActivity":int(physactivity),
-        "Fruits":int(fruits),"Veggies":int(veggies),"HvyAlcoholConsump":int(hvyalcoh),"AnyHealthcare":int(anyhealthcare),
-        "NoDocbcCost":int(nomedicalcare),"GenHlth":int(genhlth),"MentHlth":int(menthlth),"PhysHlth":int(physhlth),
-        "DiffWalk":int(diffwalk),"Sex":int(gender),"Age":int(age),"Education":int(education),"Income":int(income),
-    })]
+        "HighBP": int(highbp), "HighChol": int(highchol), "CholCheck": int(cholcheck), "BMI": round(float(bmi), 1),
+        "Smoker": int(smoker), "Stroke": int(stroke), "HeartDiseaseorAttack": int(heartdisease), "PhysActivity": int(physactivity),
+        "Fruits": int(fruits), "Veggies": int(veggies), "HvyAlcoholConsump": int(hvyalcoh), "AnyHealthcare": int(anyhealthcare),
+        "NoDocbcCost": int(nomedicalcare), "GenHlth": int(genhlth), "MentHlth": int(menthlth), "PhysHlth": int(physhlth),
+        "DiffWalk": int(diffwalk), "Sex": int(gender), "Age": int(age), "Education": int(education), "Income": int(income)
+    }])
 
 if st.button("🧪 Calcola predizione"):
     df_rec = _inputs()
