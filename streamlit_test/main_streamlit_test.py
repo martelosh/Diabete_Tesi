@@ -7,18 +7,11 @@ import pandas as pd
 import streamlit as st
 
 # === PATH PROGETTO / IMPORT ===
-PROJECT_ROOT = Path(__file__).resolve().parents[1]  # <-- root del progetto
+PROJECT_ROOT = Path(__file__).resolve().parents[1]  # root del progetto
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.utils import load_best_model, predict_with_model, preprocess_for_inference  # noqa: E402
-
-# [opzionale] se hai il modulo dei report, lo uso; altrimenti fallback inline
-try:
-    from src.from_streamlit.metrics_report import build_weekly_feedback_report as build_reports  # noqa: E402
-    REPORTS_EXTERNAL = True
-except Exception:
-    REPORTS_EXTERNAL = False
 
 # === CONFIG & STILE ===
 st.set_page_config(page_title="Rischio Diabete — Demo", page_icon="🩺", layout="wide")
@@ -157,6 +150,7 @@ def render_form():
 
         st.session_state["pending_record"] = rec
         st.session_state["pending_model_type"] = model_type
+
         # nome artefatto (per report)
         artifacts_dir = PROJECT_ROOT / "data" / "grid_search_results"
         if model_type == "sklearn":
@@ -191,31 +185,32 @@ def render_form():
                 df_new = out
             df_new.to_csv(FEEDBACK, index=False)
 
-            # reset step
             for k in ["pending_record","pending_model_type","pending_model_artifact","pending_pred_class"]:
                 st.session_state[k] = None
             st.success("✅ Salvato in data/training_feedback.csv.")
 
-# === MONITORAGGIO ===
+# === REPORT INLINE (semplice e affidabile) ===
 def _build_reports_inline():
-    """Fallback se non c'è il modulo report: genera weekly/by_model/confusion."""
+    """Genera weekly/by_model/confusion partendo *sempre* da FEEDBACK."""
     if not FEEDBACK.exists():
-        return False, "Non trovo 'data/training_feedback.csv'."
+        return False, f"Non trovo {FEEDBACK}. Fai almeno un invio dal Form."
     df = pd.read_csv(FEEDBACK)
     if df.empty:
-        return False, "'training_feedback.csv' è vuoto."
+        return False, f"{FEEDBACK.name} è vuoto."
+
     df["is_correct"] = (df["Predicted"] == df["Diabetes_012"]).astype(int)
     if "timestamp" in df.columns:
         df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Weekly (se ho timestamp)
-    if df["timestamp"].notna().any():
+    # Weekly (settimana = inizio lunedì)
+    if "timestamp" in df.columns and df["timestamp"].notna().any():
         weekly = (
-            df.set_index("timestamp")
-              .groupby(pd.Grouper(freq="W-MON"))
+            df.assign(week_start=df["timestamp"].dt.to_period("W-MON").apply(lambda p: p.start_time))
+              .groupby("week_start")
               .agg(tests=("is_correct","size"), accuracy=("is_correct","mean"))
-              .reset_index().rename(columns={"timestamp":"week_start"})
+              .reset_index()
         )
         weekly["accuracy"] = weekly["accuracy"].round(4)
         weekly.to_csv(METRICS_DIR / "weekly_report.csv", index=False)
@@ -233,29 +228,10 @@ def _build_reports_inline():
     # confusion
     cm = pd.crosstab(df["Diabetes_012"], df["Predicted"], rownames=["True"], colnames=["Pred"])
     cm.to_csv(METRICS_DIR / "confusion_matrix_overall.csv")
-    return True, "Report generati/aggiornati."
 
-def _run_reports_safe():
-    """Chiama il builder esterno (se presente) senza aspettarsi un return specifico."""
-    if not REPORTS_EXTERNAL:
-        return _build_reports_inline()
-    try:
-        # Prova con keyword esplicita (per puntare a data/training_feedback.csv)
-        res = build_reports(feedback_csv=FEEDBACK)
-        return True, "Report generati/aggiornati." if res is None else (True, str(res))
-    except TypeError:
-        # firma diversa: prova posizionale o senza argomenti
-        try:
-            res = build_reports(FEEDBACK)
-            return True, "Report generati/aggiornati." if res is None else (True, str(res))
-        except TypeError:
-            res = build_reports()
-            return True, "Report generati/aggiornati." if res is None else (True, str(res))
-    except FileNotFoundError as e:
-        return False, str(e)
-    except Exception as e:
-        return False, f"Errore nella generazione report: {e}"
+    return True, "Report rigenerati dal CSV."
 
+# === MONITORAGGIO ===
 def render_monitor():
     st.markdown('<div class="topbar">', unsafe_allow_html=True)
     if st.button("⬅️ Home"): go("home"); st.stop()
@@ -266,24 +242,18 @@ def render_monitor():
     by_model_path = METRICS_DIR / "by_model_report.csv"
     cm_path = METRICS_DIR / "confusion_matrix_overall.csv"
 
-    # genera report se mancano
+    # se i file non esistono ancora, creali adesso
     if not (weekly_path.exists() or by_model_path.exists() or cm_path.exists()):
-        if not FEEDBACK.exists():
-            st.info("Nessun feedback ancora. Vai al Form, salva un caso, poi torna qui.")
-            return
-        ok, msg = _run_reports_safe()
+        ok, msg = _build_reports_inline()
         (st.success if ok else st.warning)(msg)
 
-    # bottone aggiorna
+    # bottone aggiorna (rigenera sempre dai feedback)
     if st.button("🔄 Aggiorna report"):
-        if not FEEDBACK.exists():
-            st.warning("Nessun feedback trovato. Salva almeno un caso dal Form.")
-        else:
-            ok, msg = _run_reports_safe()
-            (st.success if ok else st.warning)(msg)
+        ok, msg = _build_reports_inline()
+        (st.success if ok else st.warning)(msg)
 
     # UI
-    if (METRICS_DIR / "weekly_report.csv").exists():
+    if weekly_path.exists():
         weekly = pd.read_csv(weekly_path, parse_dates=["week_start"])
         st.subheader("Andamento settimanale")
         if not weekly.empty:
@@ -294,9 +264,11 @@ def render_monitor():
             c2.metric("Accuracy ultima settimana", f"{last['accuracy'].iloc[0]*100:.1f}%")
         else:
             st.info("Nessun dato settimanale ancora.")
+
     if by_model_path.exists():
         st.subheader("Prestazioni per modello")
         st.dataframe(pd.read_csv(by_model_path), use_container_width=True)
+
     if cm_path.exists():
         st.subheader("Confusion matrix (complessiva)")
         st.dataframe(pd.read_csv(cm_path, index_col=0), use_container_width=True)
