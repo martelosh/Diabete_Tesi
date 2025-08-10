@@ -97,8 +97,8 @@ div.block-container { padding-top: 2rem; padding-bottom: 2rem; }
 }
 #chat-teaser .teaser-actions { display: flex; gap: 8px; margin-top: 6px; justify-content: flex-end; }
 #chat-teaser button {
-  border: 1px solid rgba(0,0,0,.12); background: #fff; color: #000; border-radius: 10px;
-  padding: 4px 8px; font-size: 0.85rem; cursor: pointer;
+  border: 1px solid rgba(0,0,0,.12); background: #fff; color: #000;  /* testo nero */
+  border-radius: 10px; padding: 4px 8px; font-size: 0.85rem; cursor: pointer;
   transition: transform .12s ease, box-shadow .12s ease;
 }
 #chat-teaser button:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0,0,0,.12); }
@@ -280,6 +280,9 @@ def render_form():
         if first_msg.startswith("⚠️") or first_msg.lower().startswith("errore"):
             first_msg = sys_prompt.split("\n")[0]
 
+        # >>> Aggiunta: chiedi esplicitamente il COMUNE nella vignetta
+        first_msg = first_msg + "\n\n**Per aiutarti a prenotare, scrivimi il tuo _comune_.**"
+
         st.session_state.messages = [{"role": "assistant", "content": first_msg}]
         st.session_state.chat_open = False
         st.session_state.teaser_message = first_msg
@@ -313,7 +316,7 @@ def render_chat():
                 st.session_state.show_teaser = False
         st.query_params.clear()
 
-    # — Vignetta: prima del form → pulsante verso il form; dopo la predizione → 'Apri chat'
+    # — Vignetta
     if st.session_state.show_teaser and not st.session_state.chat_open and st.session_state.teaser_message:
         teaser_text = st.session_state.teaser_message
         if len(teaser_text) > 240:
@@ -385,7 +388,7 @@ def render_chat():
         if prompt := st.chat_input("Scrivi un messaggio…"):
             st.session_state.messages.append({"role": "user", "content": prompt})
 
-            # 1) se sembra un comune → contatti
+            # 1) prova a interpretare il messaggio come COMUNE e rispondere con contatti dal CSV
             reply = None
             comune_candidate = prompt.strip()
             if len(comune_candidate) >= 2 and any(c.isalpha() for c in comune_candidate):
@@ -393,7 +396,14 @@ def render_chat():
                 if contacts:
                     lines = ["**Contatti utili nella tua zona**:"]
                     for c in contacts:
-                        lines.append(f"- **{c['struttura']}** — {c['telefono']}  \n  _{c['tipo']}_")
+                        riga = f"- **{c['struttura']}**"
+                        if c.get('indirizzo'):
+                            riga += f" — {c['indirizzo']}"
+                        if c.get('telefono'):
+                            riga += f" — 📞 {c['telefono']}"
+                        if c.get('tipo'):
+                            riga += f"  \n  _{c['tipo']}_"
+                        lines.append(riga)
                     reply = "\n".join(lines)
 
             # 2) fallback all'LLM (con messaggio di servizio se indisponibile)
