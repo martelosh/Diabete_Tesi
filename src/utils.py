@@ -13,7 +13,7 @@ except Exception:
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 ARTIFACTS_DIR = DATA_DIR / "grid_search_results"
-META_PATH = ARTIFACTS_DIR / "model_meta.json"   # contiene info su feature_order e punteggi
+META_PATH = ARTIFACTS_DIR / "model_meta.json"   # contiene feature_order e punteggi
 
 def _find_best_sklearn_model():
     """Restituisce il path del modello sklearn salvato (se presente)."""
@@ -23,23 +23,26 @@ def _find_best_sklearn_model():
     return cands[0] if cands else None  # semplice: prende il primo trovato
 
 def _find_best_keras_model():
-    """Restituisce il path del modello Keras salvato (se presente)."""
-    path = ARTIFACTS_DIR / "best_keras_model.h5"
-    return path if path.exists() else None
+    """Restituisce il path del modello Keras salvato (prima .keras, poi .h5)."""
+    p1 = ARTIFACTS_DIR / "best_keras_model.keras"
+    if p1.exists():
+        return p1
+    p2 = ARTIFACTS_DIR / "best_keras_model.h5"
+    return p2 if p2.exists() else None
 
 def _load_meta():
-    """Carica le meta-info; se assenti, default minimale (solo feature_order=None)."""
+    """Carica meta-info; se assenti, default con chiavi sempre presenti."""
     if META_PATH.exists():
         with open(META_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
-    return {"feature_order": None}
+    return {"feature_order": None, "sklearn_score": None, "keras_score": None}
 
 def load_best_model():
     """
     Carica il modello migliore in base a model_meta.json:
     - se keras_score > sklearn_score -> KERAS
     - altrimenti -> SKLEARN
-    Fallback: se manca un artefatto, usa l'altro disponibile.
+    Fallback: se manca un artefatto o una metrica, usa ciò che è disponibile.
     Ritorna (model, model_type, meta).
     """
     meta = _load_meta()
@@ -51,7 +54,7 @@ def load_best_model():
 
     # decisione automatica solo se entrambe le metriche sono presenti
     if skl_score is not None and k_score is not None:
-        if k_score > skl_score and keras_path and keras_load_model is not None:
+        if k_score > skl_score and keras_path is not None and keras_load_model is not None:
             return keras_load_model(keras_path), "keras", meta
         if skl_path and skl_path.exists():
             with open(skl_path, "rb") as f:
@@ -61,15 +64,15 @@ def load_best_model():
     if skl_path and skl_path.exists():
         with open(skl_path, "rb") as f:
             return pickle.load(f), "sklearn", meta
-    if keras_path and keras_load_model is not None:
+    if keras_path is not None and keras_load_model is not None:
         return keras_load_model(keras_path), "keras", meta
 
-    raise FileNotFoundError("Nessun modello trovato. Esegui prima il training.")
+    raise FileNotFoundError("Nessun modello trovato in data/grid_search_results. Esegui prima il training.")
 
 def preprocess_for_inference(df_row: pd.DataFrame, meta: dict) -> pd.DataFrame:
     """
-    Mantiene solo l'ordine colonne in meta['feature_order'] (se presente).
-    Nessuna scalatura: i dati devono arrivare già preprocessati.
+    Reindicizza le colonne secondo meta['feature_order'] (se presente).
+    Nessuna scalatura: i dati devono arrivare già preprocessati a monte.
     """
     df_row = df_row.copy()
     feat_order = meta.get("feature_order")

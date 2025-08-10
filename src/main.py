@@ -4,9 +4,10 @@ import pandas as pd
 from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
 
-from src.model_training import split_data, evaluate_models_cross_validation, tune_keras_model
+#python -m src.mainfrom src.model_training import split_data, evaluate_models_cross_validation, tune_keras_model
+from src.model_training import split_data, evaluate_models_cross_validation, train_keras_simple
 from src.data_preprocessing import create_db_engine, test_connection
-from src.grid_search import run_grid_search, param_grids  # versione senza salvataggi
+from src.grid_search import run_grid_search_and_save as run_grid_search, param_grids
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_PATH = PROJECT_ROOT / ".env"
@@ -39,12 +40,19 @@ print("Miglior modello (CV):", best_model_name)
 #    Uso un'istanza “pulita” della stessa classe del best_estimator
 estimator_cls = best_estimator.__class__
 estimator_fresh = estimator_cls()
-best_model, best_params, best_cv, cv_results = run_grid_search(
+best_model, gs = run_grid_search(
     estimator=estimator_fresh,
     param_grid=param_grids[best_model_name],
     x_train=x_train, y_train=y_train,
+    model_name=best_model_name,   # ← obbligatorio per la versione che salva
     cv=5, scoring="accuracy", verbose=0
 )
+
+# Ricavo ciò che ti serve dal GridSearchCV
+best_params = gs.best_params_
+best_cv = float(gs.best_score_)
+cv_results = gs.cv_results_
+
 print(f"GridSearch > {best_model_name} best params:", best_params)
 print(f"GridSearch > {best_model_name} mean CV acc: {best_cv:.4f}")
 
@@ -53,7 +61,7 @@ try:
     x_tr, x_val, y_tr, y_val = train_test_split(
         x_train, y_train, test_size=0.2, random_state=42, stratify=y_train
     )
-    model_keras, val_acc = tune_keras_model(x_tr, y_tr, x_val, y_val, max_epochs=50)
+    model_keras, val_acc = train_keras_simple(x_tr, y_tr, x_val, y_val, max_epochs=50)
     print(f"Keras val acc: {val_acc:.4f}")
 except Exception as e:
     print("Keras non eseguito:", e)
