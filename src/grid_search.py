@@ -1,13 +1,29 @@
-import os
-import pickle
+# grid_search.py (estratto)
+
 from pathlib import Path
-from sklearn.model_selection import GridSearchCV
+import os, json, pickle
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.linear_model import SGDClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
+
+# opzionali
+try:
+    from xgboost import XGBClassifier
+except Exception:
+    XGBClassifier = None
+
+try:
+    from lightgbm import LGBMClassifier
+except Exception:
+    LGBMClassifier = None
 
 param_grids = {
     "SGDClassifier": {
         "loss": ["hinge", "log_loss"],
         "penalty": ["l2", "l1"],
-        "alpha": [0.0001, 0.001],
+        "alpha": [1e-4, 1e-3],
     },
     "DecisionTree": {
         "max_depth": [None, 10, 20],
@@ -22,57 +38,40 @@ param_grids = {
         "n_neighbors": [3, 5, 7],
         "weights": ["uniform", "distance"],
     },
+    # Aggiungi queste solo se le librerie sono installate
     "XGBoost": {
         "max_depth": [3, 6, 9],
         "learning_rate": [0.01, 0.1],
         "n_estimators": [100, 200],
-    },
+    } if XGBClassifier is not None else None,
     "LightGBM": {
         "num_leaves": [31, 50],
         "learning_rate": [0.01, 0.1],
         "n_estimators": [100, 200],
-    }
+    } if LGBMClassifier is not None else None,
 }
+# pulizia voci None (se pacchetti mancanti)
+param_grids = {k: v for k, v in param_grids.items() if v is not None}
 
 def run_grid_search_and_save(estimator, param_grid, x_train, y_train, model_name,
-                             cv=5, scoring='accuracy', n_jobs=-1, verbose=1):
-
+                             cv=5, scoring='accuracy', n_jobs=-1, verbose=1, random_state=42):
     folder_path = Path(__file__).resolve().parent.parent / "data" / "grid_search_results"
-    os.makedirs(folder_path, exist_ok=True)
+    folder_path.mkdir(parents=True, exist_ok=True)
+    model_file = folder_path / f"{model_name}_optimized_model.pkl"
 
-    model_file = os.path.join(folder_path, f"{model_name}_optimized_model.pkl")
+    cv_strategy = StratifiedKFold(n_splits=cv, shuffle=True, random_state=random_state)
+    gs = GridSearchCV(estimator, param_grid, cv=cv_strategy, scoring=scoring,
+                      n_jobs=n_jobs, verbose=verbose, refit=True)
+    gs.fit(x_train, y_train)
 
-    grid_search = GridSearchCV(
-        estimator=estimator,
-        param_grid=param_grid,
-        cv=cv,
-        scoring=scoring,
-        n_jobs=n_jobs,
-        verbose=verbose
-    )
-
-    grid_search.fit(x_train, y_train)
-
-    best_score = float(grid_search.best_score_)  # accuracy media CV
-    _best_to_meta(model_name=model_name, score=best_score)
-
-    best_params = grid_search.best_params_
-    print(f"Migliori parametri trovati: {best_params}")
-
-    best_model = estimator.__class__(**best_params)
-    best_model.fit(x_train, y_train)
-
+    best_model = gs.best_estimator_
     with open(model_file, "wb") as f:
         pickle.dump(best_model, f)
-
+    print(f"Migliori parametri {model_name}: {gs.best_params_}")
     print(f"Modello salvato in {model_file}")
+    return best_model, gs
 
-    return best_model, grid_search
-
-import json
-from pathlib import Path
-
-def _best_to_meta(model_name: str, score: float):
+def _best_to_meta(model_name: str, score: float, params: dict, scoring: str, cv: int):
     """Aggiorna data/grid_search_results/model_meta.json con info sklearn."""
     artifacts = Path(__file__).resolve().parent.parent / "data" / "grid_search_results"
     artifacts.mkdir(parents=True, exist_ok=True)
@@ -82,6 +81,11 @@ def _best_to_meta(model_name: str, score: float):
     if meta_path.exists():
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
 
-    meta["sklearn_model"] = model_name
-    meta["sklearn_score"] = score
+    meta.update({
+        "sklearn_model": model_name,
+        "sklearn_score": score,
+        "sklearn_best_params": params,
+        "scoring": scoring,
+        "cv": cv
+    })
     meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -1,63 +1,59 @@
-# src/main.py
 import os
 from pathlib import Path
 import pandas as pd
 from dotenv import load_dotenv
+from sklearn.model_selection import train_test_split
 
 from src.model_training import split_data, evaluate_models_cross_validation, tune_keras_model
-from src.data_preprocessing import create_db_engine, test_connection, preprocess_data
-from src.grid_search import run_grid_search_and_save, param_grids
+from src.data_preprocessing import create_db_engine, test_connection
+from src.grid_search import run_grid_search, param_grids  # versione senza salvataggi
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_PATH = PROJECT_ROOT / ".env"
 
+# 0) ENV / DB
 load_dotenv(ENV_PATH)
 username = os.getenv("SQL_USERNAME")
 password = os.getenv("SQL_PASSWORD")
-host = os.getenv("SQL_HOST")
+host     = os.getenv("SQL_HOST")
 database = os.getenv("SQL_DATABASE")
-port = int(os.getenv("SQL_PORT", 3306))
+port     = int(os.getenv("SQL_PORT", 3306))
 
 # 1) Connessione DB
 engine = create_db_engine(username, password, host, port, database)
 test_connection(engine)
 
-# 2) Carico dati direttamente dal DB (tabella già esistente)
+# 2) Carico dati già PULITI e SCALATI dal DB
 TABLE_NAME = "diabetes_data"
 df = pd.read_sql_table(TABLE_NAME, con=engine)
 
-# 3) Preprocessing leggero (dropna)
-df_clean = preprocess_data(df)
+# 3) Split (STRATIFICATO) in train/test
+x_train, x_test, y_train, y_test = split_data(df, target_column="Diabetes_012")
 
-# 4) Split e training
-x_train, x_test, y_train, y_test = split_data(df_clean, target_column="Diabetes_012")
-
-# 5) Cross-validation su più modelli
+# 4) Cross-validation su più modelli (scelta algoritmo migliore)
 results, best_estimator, best_model_name = evaluate_models_cross_validation(x_train, y_train)
-print("Risultati CV:", results)
+print("Risultati CV (accuracy media):", results)
+print("Miglior modello (CV):", best_model_name)
 
-# 6) Grid search sul migliore e salvataggio modello
-best_model, gs = run_grid_search_and_save(
-    best_estimator,
-    param_grids[best_model_name],
-    x_train, y_train,
-    model_name=best_model_name
+# 5) Grid search SOLO sul vincitore (nessun salvataggio qui)
+#    Uso un'istanza “pulita” della stessa classe del best_estimator
+estimator_cls = best_estimator.__class__
+estimator_fresh = estimator_cls()
+best_model, best_params, best_cv, cv_results = run_grid_search(
+    estimator=estimator_fresh,
+    param_grid=param_grids[best_model_name],
+    x_train=x_train, y_train=y_train,
+    cv=5, scoring="accuracy", verbose=0
 )
+print(f"GridSearch > {best_model_name} best params:", best_params)
+print(f"GridSearch > {best_model_name} mean CV acc: {best_cv:.4f}")
 
-# 7) (Opzionale) Keras tuning con scaler salvato automaticamente
+# 6) (Opzionale) Keras: validation set interno, niente scaling qui
 try:
-    model_keras, val_acc = tune_keras_model(x_train, y_train, x_test, y_test, max_epochs=50)
-    artifacts = PROJECT_ROOT / "data" / "grid_search_results"
-    artifacts.mkdir(parents=True, exist_ok=True)
-    model_keras.save(artifacts / "best_keras_model.h5")
+    x_tr, x_val, y_tr, y_val = train_test_split(
+        x_train, y_train, test_size=0.2, random_state=42, stratify=y_train
+    )
+    model_keras, val_acc = tune_keras_model(x_tr, y_tr, x_val, y_val, max_epochs=50)
     print(f"Keras val acc: {val_acc:.4f}")
-
-    meta_path = artifacts / "model_meta.json"
-    meta = {}
-    if meta_path.exists():
-        import json
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    meta["keras_score"] = float(val_acc)
-    meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 except Exception as e:
     print("Keras non eseguito:", e)
