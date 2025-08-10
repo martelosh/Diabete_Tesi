@@ -4,9 +4,10 @@ import sys
 import streamlit as st
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.append(str(PROJECT_ROOT / "src"))
-from src.from_streamlit.metrics_report import build_weekly_report
+PROJECT_ROOT = Path(__file__).resolve().parents[2]  # → root del progetto
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))  
+from src.from_streamlit.metrics_report import build_weekly_feedback_report as build_weekly_report
 
 st.set_page_config(page_title="Monitoraggio modello", page_icon="📈", layout="centered")
 st.title("📈 Monitoraggio modello")

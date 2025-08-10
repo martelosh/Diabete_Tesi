@@ -5,10 +5,10 @@ from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.append(str(PROJECT_ROOT / "src"))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]  # <-- root progetto
+sys.path.append(str(PROJECT_ROOT))  
 from src.utils import load_best_model, predict_with_model, preprocess_for_inference  # noqa: E402
-from src.from_streamlit.metrics_report import build_weekly_report
+from src.from_streamlit.metrics_report import build_weekly_feedback_report as build_weekly_report
 
 st.set_page_config(page_title="Rischio Diabete — Demo", page_icon="🩺", layout="wide")
 st.session_state.setdefault("view", "home")

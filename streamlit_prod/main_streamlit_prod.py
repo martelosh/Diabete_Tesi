@@ -3,8 +3,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.append(str(PROJECT_ROOT / "src"))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]  # <-- root progetto
+sys.path.append(str(PROJECT_ROOT)) 
 
 st.set_page_config(page_title="Valutazione Rischio Diabete", page_icon="🩺", layout="wide")
 st.markdown("""<style>
