@@ -5,7 +5,7 @@ import streamlit as st
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(PROJECT_ROOT / "src"))
-from utils import load_best_model, preprocess_for_inference  # noqa: E402
+from src.utils import load_best_model, preprocess_for_inference  # noqa: E402
 
 st.set_page_config(page_title="Valutazione — Form", page_icon="📝", layout="centered")
 
