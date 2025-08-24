@@ -22,42 +22,67 @@ st.markdown("""
 /* Layout più largo e con meno margini laterali */
 html, body { background: #f6f7fb; }
 div.block-container{
-  padding: 1.25rem 1rem !important;
-  max-width: 1400px !important;
+  padding: 1.1rem .8rem !important;
+  max-width: 1480px !important;
 }
 
 /* Nascondi sidebar/header icona */
 section[data-testid="stSidebar"]{display:none}
 header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
 
-/* Hero */
-.hero{
+/* ------- WOW HOME ------- */
+.hero-wow{
+  position: relative;
   border-radius: 28px;
-  padding: clamp(1.2rem, 2vw, 2rem);
+  padding: clamp(1.4rem, 2.2vw, 2.2rem);
+  overflow: hidden;
   border: 1px solid rgba(16,24,40,.08);
   background:
-    radial-gradient(1200px 600px at 8% 10%, rgba(0,120,255,.08), transparent 60%),
-    radial-gradient(1000px 500px at 90% 30%, rgba(255,60,140,.08), transparent 60%),
-    linear-gradient(180deg, #ffffff, #fafbff);
-  box-shadow: 0 16px 42px rgba(16,24,40,.08);
-  margin-bottom: 1rem;
+    radial-gradient(1200px 600px at 8% 10%, rgba(56,189,248,.18), transparent 60%),
+    radial-gradient(900px 500px at 92% 30%, rgba(168,85,247,.18), transparent 60%),
+    linear-gradient(180deg, #ffffff, #f9fbff);
+  box-shadow: 0 18px 46px rgba(16,24,40,.10);
+  margin-bottom: 1.1rem;
 }
-.hero h1{ margin: 0 0 .35rem }
-.hero p { margin: 0; opacity: .9 }
+.hero-wow:before{
+  content: "";
+  position:absolute; inset:-20%;
+  background: conic-gradient(from 180deg at 50% 50%, rgba(99,102,241,.1), rgba(56,189,248,.08), rgba(236,72,153,.08), rgba(99,102,241,.1));
+  filter: blur(40px); opacity:.6;
+}
+.hero-inner{ position: relative; z-index: 2; }
 
-/* Card pulite */
+.gradient-title{
+  font-weight: 900; letter-spacing: .2px; line-height: 1.08;
+  font-size: clamp(1.8rem, 3.4vw, 3.2rem);
+  background: linear-gradient(90deg, #0ea5e9, #6366f1, #f43f5e, #0ea5e9);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  background-size: 300% 100%;
+  animation: shimmer 8s linear infinite;
+  margin: 0 0 .4rem;
+}
+@keyframes shimmer {
+  0% { background-position: 0% 50% }
+  100% { background-position: 300% 50% }
+}
+.subtitle{
+  margin: 0; opacity: .9; font-size: clamp(.98rem, 1.4vw, 1.05rem);
+}
+
+/* Feature cards */
+.feature-grid{ display:grid; grid-template-columns:1fr; gap:.9rem; }
+@media (min-width: 880px){ .feature-grid{ grid-template-columns: 1fr 1fr 1fr; } }
 .card{
   border: 1px solid rgba(16,24,40,.08);
   border-radius: 20px;
   background: #fff;
   box-shadow: 0 8px 22px rgba(16,24,40,.06);
-  padding: 1.1rem 1.25rem;
-  transition: transform .12s ease, box-shadow .12s ease;
-  margin-bottom: 1rem;
+  padding: 1.05rem 1.2rem;
+  transition: transform .14s ease, box-shadow .14s ease;
 }
-.card:hover{ transform: translateY(-1px); box-shadow: 0 12px 28px rgba(16,24,40,.08); }
+.card:hover{ transform: translateY(-1px); box-shadow: 0 14px 28px rgba(16,24,40,.08); }
+.card .icon{ font-size: 1.4rem; }
 
-/* Badge probabilità — testo nero come richiesto */
 .badge{
   display:inline-block; padding:.34rem .7rem; border-radius:999px;
   border:1px solid rgba(16,24,40,.12); background:#fff; font-size:.8rem;
@@ -66,10 +91,10 @@ header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
 
 /* Pulsanti */
 .stButton>button[kind="primary"]{
-  border-radius: 14px; font-weight: 700; padding: .78rem 1.05rem;
-  box-shadow: 0 12px 26px rgba(16,24,40,.12);
+  border-radius: 14px; font-weight: 800; padding: .82rem 1.1rem;
+  box-shadow: 0 14px 30px rgba(16,24,40,.14);
 }
-.stButton>button{ border-radius: 12px; font-weight: 600 }
+.stButton>button{ border-radius: 12px; font-weight: 650 }
 
 /* Barra probabilità */
 .prob-wrap{
@@ -87,15 +112,15 @@ header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
 
 /* Lista comuni (pill) */
 .pill{
-  display:inline-block; margin:.25rem; padding:.35rem .7rem; border-radius:999px;
-  border:1px solid rgba(16,24,40,.15); background:#fff; cursor:pointer; font-size:.92rem;
+  display:inline-block; margin:.25rem; padding:.38rem .72rem; border-radius:999px;
+  border:1px solid rgba(16,24,40,.15); background:#fff; cursor:pointer; font-size:.94rem;
 }
 .pill:hover{ background:#f2f4f7 }
 
 /* Dark mode */
 @media (prefers-color-scheme: dark){
   html, body { background: #0f1117; }
-  .hero{ border-color: rgba(255,255,255,.08); background: linear-gradient(180deg,#0f1117,#12131a); color:#e9e9ea }
+  .hero-wow{ border-color: rgba(255,255,255,.08); background: linear-gradient(180deg,#0f1117,#12131a); color:#e9e9ea }
   .card{ background:#12131a; color:#e9e9ea; border-color: rgba(255,255,255,.08) }
   .prob-wrap{ border-color: rgba(255,255,255,.1); background: #141722; }
 }
@@ -188,31 +213,66 @@ def predict_with_proba(model, model_type: str, X: pd.DataFrame):
         return int(model.predict(X)[0]), 0.50
     p = model.predict(X, verbose=0)[0]; c = int(np.argmax(p)); return c, float(p[c])
 
-# ========== HOME ==========
+# ========== HOME (WOW) ==========
 def render_home():
     st.markdown(
-        """<div class="hero">
-           <h1>🩺 Valutazione del Rischio Diabete</h1>
-           <p>Compila il form per ottenere la <b>classe (0/1/2)</b> e la <b>probabilità</b>. Poi seleziona il tuo <b>comune</b> per contatti utili.</p>
+        """<div class="hero-wow">
+            <div class="hero-inner">
+              <div class="gradient-title">Valutazione del Rischio Diabete</div>
+              <p class="subtitle">Predizione <b>0/1/2</b> con probabilità. Contatti rapidi agli ospedali del tuo comune.</p>
+            </div>
            </div>""",
         unsafe_allow_html=True,
     )
-    st.write("")
-    f1, f2, f3 = st.columns([1,1,1.2])
-    with f1:
-        st.markdown("#### 🎯 Perché")
-        st.markdown("- Screening rapido\n- Probabilità oltre la classe\n- Supporto pratico")
-    with f2:
-        st.markdown("#### 🔒 Privacy")
-        st.markdown("I dati sono usati solo per questa valutazione.\nNon sostituisce un consulto medico.")
-    with f3:
-        st.markdown("#### ⚙️ Come funziona")
-        st.markdown("1) Compila il form\n2) Vedi risultato + probabilità\n3) Seleziona comune per contatti")
-    st.write("")
-    cta1, cta2, _ = st.columns([1,1,1])
-    with cta1:
+
+    # Feature / Value props
+    st.markdown('<div class="feature-grid">', unsafe_allow_html=True)
+    st.markdown(
+        """<div class="card">
+             <div class="icon">⚡</div>
+             <div style="font-weight:800; font-size:1.05rem; margin-top:.2rem">Valutazione immediata</div>
+             <div style="opacity:.9">Inserisci poche informazioni, calcoliamo il <b>BMI</b> e stimiamo il rischio con <b>probabilità</b>.</div>
+           </div>""",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        """<div class="card">
+             <div class="icon">🧠</div>
+             <div style="font-weight:800; font-size:1.05rem; margin-top:.2rem">Modelli ottimizzati</div>
+             <div style="opacity:.9">Selezione automatica tra pipeline <b>Sklearn</b> e rete <b>Keras</b> con preprocess dedicato.</div>
+           </div>""",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        """<div class="card">
+             <div class="icon">🏥</div>
+             <div style="font-weight:800; font-size:1.05rem; margin-top:.2rem">Contatti ospedalieri</div>
+             <div style="opacity:.9">Cerca il tuo <b>comune</b> e ottieni <b>indirizzo</b>, <b>telefono</b> e <b>Prenotazioni/CUP</b>.</div>
+           </div>""",
+        unsafe_allow_html=True,
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Stepper
+    st.markdown(
+        """
+        <div class="card" style="padding:1rem 1.1rem">
+          <div style="font-weight:800; margin-bottom:.35rem">Come funziona</div>
+          <ol style="margin:0 0 .2rem 1.1rem; line-height:1.5">
+            <li>Compila il <b>form</b> con i tuoi dati (BMI auto-calcolato).</li>
+            <li>Ottieni il <b>risultato</b> e la <b>probabilità</b>.</li>
+            <li>Se vuoi, <b>prenota</b> un controllo: cerca il <b>tuo comune</b> e contatta l’ospedale.</li>
+          </ol>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # CTA
+    c1, c2, _ = st.columns([1.2, 1.2, 1])
+    with c1:
         st.button("📝 Apri il form", type="primary", use_container_width=True, on_click=lambda: go("form"))
-    with cta2:
+    with c2:
         st.button("📍 Vai ai contatti", use_container_width=True, on_click=lambda: go("contacts"))
 
 # ========== CONTATTI ==========
@@ -318,7 +378,6 @@ def render_contacts():
         lat_span = float(df_sel[lat_col].max() - df_sel[lat_col].min())
         lon_span = float(df_sel[lon_col].max() - df_sel[lon_col].min())
         span = max(lat_span, lon_span)
-        # Milano ~ 0.1° ~ qualche km; più piccolo → più zoom
         if span < 0.005:   # ~500m
             return 14.5
         if span < 0.01:    # ~1km
@@ -369,7 +428,7 @@ def render_contacts():
                         layers.append(layer_sel)
                         center_lat = float(df_sel[lat_col].mean())
                         center_lon = float(df_sel[lon_col].mean())
-                        zoom = _zoom_for_bbox(df_sel, lat_col, lon_col)  # <--- ZOOM PIÙ VICINO SUL COMUNE
+                        zoom = _zoom_for_bbox(df_sel, lat_col, lon_col)  # zoom sul comune
                     else:
                         center_lat, center_lon, zoom = MILANO_LAT, MILANO_LON, 11.0
                 else:
