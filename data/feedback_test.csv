@@ -1,0 +1,2 @@
+HighBP,HighChol,CholCheck,BMI,Smoker,Stroke,HeartDiseaseorAttack,PhysActivity,Fruits,Veggies,HvyAlcoholConsump,AnyHealthcare,NoDocbcCost,GenHlth,MentHlth,PhysHlth,DiffWalk,Sex,Age,Education,Income,Predicted,Diabetes_012,timestamp,model_type,model_artifact
+0,0,0,24.2,0,0,0,0,0,0,0,0,0,3,2,2,0,0,40,4,4,0,0,2025-08-24T18:08:19.197384+00:00,sklearn,LightGBM_optimized_model.pkl
