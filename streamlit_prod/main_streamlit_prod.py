@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import streamlit as st
+import pydeck as pdk
 
 # ========== PATH & IMPORT ==========
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -18,11 +19,11 @@ from src.utils import load_best_model, preprocess_for_inference  # noqa: E402
 st.set_page_config(page_title="Valutazione Rischio Diabete", page_icon="🩺", layout="wide")
 st.markdown("""
 <style>
-/* Layout generale con più aria ai lati */
+/* Layout con aria ai lati */
 html, body { background: #f6f7fb; }
 div.block-container{
-  padding: 3rem 2rem !important;     /* ↑↑ margini */
-  max-width: 1280px !important;       /* ↑ larghezza */
+  padding: 3rem 2rem !important;
+  max-width: 1280px !important;
 }
 
 /* Nascondi sidebar/header icona */
@@ -39,12 +40,12 @@ header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
     radial-gradient(1000px 500px at 90% 30%, rgba(255,60,140,.08), transparent 60%),
     linear-gradient(180deg, #ffffff, #fafbff);
   box-shadow: 0 16px 42px rgba(16,24,40,.08);
-  margin-bottom: 1.4rem;              /* spazio sotto */
+  margin-bottom: 1.4rem;
 }
 .hero h1{ margin: 0 0 .35rem }
 .hero p { margin: 0; opacity: .9 }
 
-/* Card pulite con spazio */
+/* Card pulite */
 .card{
   border: 1px solid rgba(16,24,40,.08);
   border-radius: 20px;
@@ -52,7 +53,7 @@ header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
   box-shadow: 0 8px 22px rgba(16,24,40,.06);
   padding: 1.1rem 1.25rem;
   transition: transform .12s ease, box-shadow .12s ease;
-  margin-bottom: 1rem;                /* aria tra card */
+  margin-bottom: 1rem;
 }
 .card:hover{ transform: translateY(-1px); box-shadow: 0 12px 28px rgba(16,24,40,.08); }
 .badge{ display:inline-block; padding:.34rem .7rem; border-radius:999px; border:1px solid rgba(16,24,40,.12); background:#fff; font-size:.8rem }
@@ -74,10 +75,7 @@ header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
 /* Risultato card colorata */
 .result{ border-left-width: 6px; border-left-style: solid; padding-left: 1rem; }
 
-/* Sezioni */
-.section{ margin-top: 1.4rem; }
-
-/* Griglia contatti con spazio laterale */
+/* Griglia contatti */
 .contact-grid{ display:grid; grid-template-columns:1fr; gap:1rem; }
 @media (min-width: 780px){ .contact-grid{ grid-template-columns: 1fr 1fr; } }
 
@@ -91,12 +89,12 @@ header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
 </style>
 """, unsafe_allow_html=True)
 
-# ========== UTILS COLONNE CONTATTI ==========
+# ========== CONTATTI: LETTURA CSV E NORMALIZZAZIONE ==========
 CONTACTS_CSV = PROJECT_ROOT / "data" / "ospedali_milano_comuni_mapping.csv"
 
 def _slug(s: str) -> str:
     s = str(s)
-    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")  # rimuove accenti
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
     s = s.lower()
     s = re.sub(r"[^a-z0-9]+", "_", s).strip("_")
     return s
@@ -109,11 +107,12 @@ def _norm_text(s: str) -> str:
     return s
 
 def _canonicalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    # nomi attesi dal tuo CSV (robusti a apostrofi/slash)
+    # Mappa robusta per i nomi del tuo CSV
     mapping = {
         "comune": "comune",
         "citta": "comune",
         "comuni": "comune",
+        # intestazioni lunghe tipo "Ospedale di riferimento (linea d’aria, macro-area)"
         "ospedale_di_riferimento_linea_daria_macro_area": "ospedale",
         "ospedale_di_riferimento_linea_d_aria_macro_area": "ospedale",
         "ospedale_di_riferimento": "ospedale",
@@ -125,28 +124,33 @@ def _canonicalize_columns(df: pd.DataFrame) -> pd.DataFrame:
         "prenotazioni_cup": "prenotazioni",
         "cup": "prenotazioni",
         "note": "note",
-        "tipo": "note",
+        # coordinate per la mappa
+        "lat": "lat", "latitude": "lat", "latitudine": "lat",
+        "lon": "lon", "lng": "lon", "longitude": "lon", "longitudine": "lon",
     }
     new_cols = {}
     for c in df.columns:
         slug = _slug(c)
         new_cols[c] = mapping.get(slug, slug)
     df = df.rename(columns=new_cols)
-    # normalizzazione testi base
+
+    # pulizia base
     for c in ["comune","ospedale","indirizzo","telefono","prenotazioni","note"]:
         if c in df.columns:
             df[c] = df[c].astype(str).str.strip()
+
     # colonne chiave sempre presenti
     for req in ["comune", "ospedale", "indirizzo", "telefono"]:
         if req not in df.columns:
             df[req] = pd.NA
+
     return df
 
 @st.cache_data(show_spinner=False)
 def load_contacts():
     if not CONTACTS_CSV.exists():
         return pd.DataFrame(), []
-    # prova utf-8-sig, fallback latin-1 (file Excel esportati)
+    # encoding robusto
     try:
         df = pd.read_csv(CONTACTS_CSV, encoding="utf-8-sig", dtype=str, keep_default_na=False)
     except Exception:
@@ -154,7 +158,6 @@ def load_contacts():
 
     df = _canonicalize_columns(df)
 
-    # pulizia valori 'comune' + de-dup + sort accent-insensitive
     comuni = (
         pd.Series(df["comune"].astype(str).str.strip())
         .replace({"": np.nan})
@@ -174,7 +177,7 @@ st.session_state.setdefault("last_prob", None)
 st.session_state.setdefault("selected_comune", None)
 def go(view: str): st.session_state.view = view
 
-# ========== MODEL UTILS ==========
+# ========== MODEL: PREDIZIONE CON PROB ==========
 def predict_with_proba(model, model_type: str, X: pd.DataFrame):
     if model_type == "sklearn":
         if hasattr(model, "predict_proba"):
@@ -213,7 +216,150 @@ def render_home():
     with cta1:
         st.button("📝 Apri il form", type="primary", use_container_width=True, on_click=lambda: go("form"))
     with cta2:
-        st.button("📍 Vai ai contatti", use_container_width=True, on_click=lambda: go("form"))
+        st.button("📍 Vai ai contatti", use_container_width=True, on_click=lambda: go("contacts"))
+
+# ========== CONTATTI ==========
+def show_contacts_ui():
+    st.markdown("### 📍 Prenota vicino a te", help="Cerca il comune e visualizza l'ospedale di riferimento e i contatti.")
+    if contacts_df.empty or not comuni_options:
+        st.warning("Contatti non trovati. Verifica il file `data/ospedali_milano_comuni_mapping.csv`.")
+        return
+
+    col_search, col_select = st.columns([1, 2])
+
+    # Ricerca testuale (accent-insensitive)
+    with col_search:
+        q = st.text_input("🔎 Cerca comune", placeholder="Scrivi almeno 2 lettere…")
+
+    if q and len(q.strip()) >= 2:
+        qn = _norm_text(q)
+        options = [c for c in comuni_options if qn in _norm_text(c)]
+        if not options:
+            st.info("Nessun comune trovato con questo filtro.")
+    else:
+        options = comuni_options
+
+    # Selectbox compatibile con tutte le versioni (sentinella iniziale)
+    options_disp = ["— Seleziona —"] + options
+    idx = 0
+    if st.session_state.selected_comune in options:
+        idx = options.index(st.session_state.selected_comune) + 1
+
+    selected_label = st.selectbox("Seleziona il comune", options_disp, index=idx)
+    selected = None if selected_label == "— Seleziona —" else selected_label
+
+    if selected:
+        st.session_state.selected_comune = selected
+
+    if st.session_state.selected_comune:
+        sel = st.session_state.selected_comune
+        mask = contacts_df["comune"].astype(str).map(_norm_text).eq(_norm_text(sel))
+        sub = contacts_df.loc[mask].copy()
+
+        if sub.empty:
+            st.info("Nessun contatto trovato per il comune selezionato.")
+            return
+
+        st.markdown("#### Strutture e contatti")
+        st.markdown('<div class="contact-grid section">', unsafe_allow_html=True)
+        for _, row in sub.iterrows():
+            osp = str(row.get("ospedale", "")).strip() or "Ospedale di riferimento"
+            tel = str(row.get("telefono", "")).strip()
+            ind = str(row.get("indirizzo", "")).strip()
+            cup = str(row.get("prenotazioni", "")).strip()
+            note = str(row.get("note", "")).strip()
+
+            tel_html = f'<a href="tel:{tel}">{tel}</a>' if tel else ''
+
+            st.markdown(
+                f"""
+                <div class="card">
+                  <div style="font-weight:750; font-size:1.02rem; margin-bottom:.25rem">{osp}</div>
+                  <div style="margin:.2rem 0">{'📞 <b>Telefono:</b> ' + tel_html if tel_html else ''}</div>
+                  <div style="margin:.2rem 0">{'📍 <b>Indirizzo:</b> ' + ind if ind else ''}</div>
+                  <div style="margin:.2rem 0">{'🗓️ <b>Prenotazioni/CUP:</b> ' + cup if cup else ''}</div>
+                  <div style="margin:.2rem 0; opacity:.9">{'📝 <b>Note:</b> ' + note if note else ''}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        csv_bytes = sub.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "⬇️ Scarica contatti (CSV)",
+            csv_bytes,
+            file_name=f"contatti_{_norm_text(st.session_state.selected_comune)}.csv",
+            use_container_width=True,
+        )
+
+def render_contacts():
+    top = st.columns([1,3])[0]
+    if top.button("⬅️ Torna alla Home"): go("home"); st.stop()
+
+    st.markdown("## 🗂️ Contatti ospedalieri per comune")
+
+    # Bottone per ricaricare il CSV senza riavviare l'app
+    colA, colB = st.columns([1, 3])
+    with colA:
+        if st.button("🔄 Ricarica contatti"):
+            try:
+                st.cache_data.clear()
+            except Exception:
+                pass
+            global contacts_df, comuni_options
+            contacts_df, comuni_options = load_contacts()
+            st.success("Contatti ricaricati.")
+
+    show_contacts_ui()
+
+    # Mappa (se nel CSV ci sono colonne con coordinate)
+    lat_col = next((c for c in contacts_df.columns if c.lower() in ["lat","latitude","latitudine"]), None)
+    lon_col = next((c for c in contacts_df.columns if c.lower() in ["lon","lng","longitude","longitudine"]), None)
+
+    st.markdown("### 🗺️ Mappa (se disponibile)")
+    if lat_col and lon_col:
+        try:
+            dfm = contacts_df.copy()
+            dfm[lat_col] = pd.to_numeric(dfm[lat_col], errors="coerce")
+            dfm[lon_col] = pd.to_numeric(dfm[lon_col], errors="coerce")
+            dfm = dfm.dropna(subset=[lat_col, lon_col])
+            if not dfm.empty:
+                # centra sulla selezione se presente, altrimenti media
+                if st.session_state.selected_comune:
+                    subc = dfm[dfm["comune"].astype(str).map(_norm_text).eq(_norm_text(st.session_state.selected_comune))]
+                    center_lat = float(subc[lat_col].mean()) if not subc.empty else float(dfm[lat_col].mean())
+                    center_lon = float(subc[lon_col].mean()) if not subc.empty else float(dfm[lon_col].mean())
+                else:
+                    center_lat = float(dfm[lat_col].mean())
+                    center_lon = float(dfm[lon_col].mean())
+
+                layer = pdk.Layer(
+                    "ScatterplotLayer",
+                    data=dfm,
+                    get_position=[lon_col, lat_col],
+                    get_radius=600,
+                    pickable=True,
+                    radius_min_pixels=4,
+                    radius_max_pixels=20,
+                )
+                view_state = pdk.ViewState(
+                    latitude=center_lat,
+                    longitude=center_lon,
+                    zoom=9,
+                    pitch=0,
+                )
+                tooltip = {
+                    "html": "<b>{comune}</b><br/>{ospedale}<br/>{indirizzo}<br/>{telefono}",
+                    "style": {"backgroundColor": "rgba(0,0,0,0.85)", "color": "white"}
+                }
+                st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip=tooltip), use_container_width=True)
+            else:
+                st.info("Coordinate presenti ma non valide.")
+        except Exception as e:
+            st.warning(f"Mappa non disponibile: {e}")
+    else:
+        st.info("Per mostrare la mappa, aggiungi colonne **Latitudine/Longitudine** (o lat/lon) nel CSV.")
 
 # ========== FORM ==========
 def render_form():
@@ -232,7 +378,7 @@ def render_form():
         physactivity=s("Attività fisica regolare?"); fruits=s("Frutta regolare?")
     with c2:
         veggies=s("Verdura regolare?"); hvyalcoh=s("Consumo elevato di alcol?"); anyhealthcare=s("Accesso a servizi sanitari?")
-        nomedicalcare=s("Eviti cure per costi?"); genhlth=sl("Salute generale (1 ottima – 5 pessima)",1,5,3)
+        nomedicalcare=s("Eviti cure per costi?"); genhlth=sl("Salute generale (1–5)",1,5,3)
         menthlth=sl("Giorni problemi mentali (30)",0,30,2); physhlth=sl("Giorni problemi fisici (30)",0,30,2)
         diffwalk=s("Difficoltà a camminare?"); education=sl("Istruzione (1–6)",1,6,4); income=sl("Reddito (1–8)",1,8,4)
     b1,b2=st.columns(2)
@@ -240,7 +386,6 @@ def render_form():
     with b2: h=st.number_input("Altezza (cm)",100.0,220.0,170.0,0.5)
     bmi = peso/((max(h,.0001)/100)**2); st.caption(f"👉 BMI: **{bmi:.2f}**")
 
-    # Calcolo e risultato
     if st.button("🔎 Calcola risultato", type="primary", use_container_width=True):
         rec = pd.DataFrame([{
             "HighBP":int(highbp),"HighChol":int(highchol),"CholCheck":int(cholcheck),"BMI":round(float(bmi),1),
@@ -285,7 +430,7 @@ def render_form():
             unsafe_allow_html=True
         )
 
-    # — Consigli (secondo richiesta)
+    # Consiglio in base al rischio
     if st.session_state.last_pred is not None:
         cls = int(st.session_state.last_pred)
         if cls == 0:
@@ -293,75 +438,12 @@ def render_form():
         else:
             st.warning("⚠️ **Rischio medio/alto** — è **fortemente consigliato** prenotare un **controllo medico**.")
 
-    # — Sezione contatti (ricerca + select + dettagli)
-    st.markdown("### 📍 Prenota vicino a te", help="Cerca il comune e visualizza l'ospedale di riferimento e i contatti.")
-    if contacts_df.empty or not comuni_options:
-        st.warning("Contatti non trovati. Verifica il file `data/ospedali_milano_comuni_mapping.csv`.")
-        return
-
-    col_search, col_select = st.columns([1, 2])
-
-    # Ricerca testuale (accent-insensitive)
-    with col_search:
-        q = st.text_input("🔎 Cerca comune", placeholder="Scrivi almeno 2 lettere…")
-
-    if q and len(q.strip()) >= 2:
-        qn = _norm_text(q)
-        options = [c for c in comuni_options if qn in _norm_text(c)]
-        if not options:
-            st.info("Nessun comune trovato con questo filtro.")
-    else:
-        options = comuni_options
-
-    with col_select:
-        selected = st.selectbox("Seleziona il comune", options, index=None, placeholder="Seleziona…")
-
-    if selected:
-        st.session_state.selected_comune = selected
-
-    if st.session_state.selected_comune:
-        sel = st.session_state.selected_comune
-        mask = contacts_df["comune"].astype(str).map(_norm_text).eq(_norm_text(sel))
-        sub = contacts_df.loc[mask].copy()
-
-        if sub.empty:
-            st.info("Nessun contatto trovato per il comune selezionato.")
-            return
-
-        st.markdown('<div class="contact-grid section">', unsafe_allow_html=True)
-        for _, row in sub.iterrows():
-            osp = str(row.get("ospedale", "")).strip() or "Ospedale di riferimento"
-            tel = str(row.get("telefono", "")).strip()
-            ind = str(row.get("indirizzo", "")).strip()
-            cup = str(row.get("prenotazioni", "")).strip()
-            note = str(row.get("note", "")).strip()
-
-            st.markdown(
-                f"""
-                <div class="card">
-                  <div style="font-weight:750; font-size:1.02rem; margin-bottom:.25rem">{osp}</div>
-                  <div style="margin:.2rem 0">{'📞 <b>Telefono:</b> ' + tel if tel else ''}</div>
-                  <div style="margin:.2rem 0">{'📍 <b>Indirizzo:</b> ' + ind if ind else ''}</div>
-                  <div style="margin:.2rem 0">{'🗓️ <b>Prenotazioni/CUP:</b> ' + cup if cup else ''}</div>
-                  <div style="margin:.2rem 0; opacity:.9">{'📝 <b>Note:</b> ' + note if note else ''}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        csv_bytes = sub.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "⬇️ Scarica contatti (CSV)",
-            csv_bytes,
-            file_name=f"contatti_{_norm_text(st.session_state.selected_comune)}.csv",
-            use_container_width=True,
-        )
-
 # ========== ROUTING ==========
 if st.session_state.view == "home":
     render_home()
 elif st.session_state.view == "form":
     render_form()
+elif st.session_state.view == "contacts":
+    render_contacts()
 else:
     go("home"); render_home()
