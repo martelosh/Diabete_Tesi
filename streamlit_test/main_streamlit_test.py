@@ -17,28 +17,14 @@ from src.utils import load_best_model, predict_with_model, preprocess_for_infere
 # ==== CONFIG APP ====
 st.set_page_config(page_title="Rischio Diabete — TEST", page_icon="🧪", layout="wide")
 
-# ==== FILE FEEDBACK (centralizzato via .env) ====
-import os
-from dotenv import load_dotenv
-
-load_dotenv()  # carica variabili da .env (se esiste nella root)
-
-FEEDBACK_ENV = os.getenv("FEEDBACK_PATH")
-
-if FEEDBACK_ENV:
-    FEEDBACK = Path(FEEDBACK_ENV).expanduser().resolve()
-    DATA_DIR = FEEDBACK.parent
-else:
-    DATA_DIR = PROJECT_ROOT / "data"
-    FEEDBACK = (DATA_DIR / "training_feedback.csv").resolve()
-
+# ==== FILE FEEDBACK: PERCORSO FORZATO (NESSUNA AMBIGUITÀ) ====
+# >>> Sostituisci il path qui sotto SOLO se la tua cartella del progetto è in un percorso diverso.
+FEEDBACK = Path(r"C:\Users\MARTINADICORATO\Diabete_New\Diabete\data\training_feedback.csv").resolve()
+DATA_DIR = FEEDBACK.parent
 METRICS_DIR = DATA_DIR / "metrics"
 
 st.caption(f"📂 Feedback path usato: {FEEDBACK}")
 st.caption(f"📁 Metrics dir: {METRICS_DIR}")
-
-
-st.caption(f"📂 Feedback path (assoluto): {FEEDBACK.resolve()}")
 st.caption(f"📌 Working dir dell'app: {Path.cwd()}")
 st.caption(f"Esiste feedback? {'✅ sì' if FEEDBACK.exists() else '❌ no'}")
 
@@ -51,7 +37,7 @@ if not FEEDBACK.exists():
             "Fruits","Veggies","HvyAlcoholConsump","AnyHealthcare","NoDocbcCost","GenHlth","MentHlth","PhysHlth",
             "DiffWalk","Sex","Age","Education","Income","Predicted","Diabetes_012","timestamp","model_type","model_artifact"
         ]).to_csv(FEEDBACK, index=False)
-        st.success(f"Creato: {FEEDBACK.resolve()}")
+        st.success(f"Creato: {FEEDBACK}")
 
 # Pulsante per scaricare il file effettivamente usato
 if FEEDBACK.exists():
@@ -59,6 +45,26 @@ if FEEDBACK.exists():
                        data=FEEDBACK.read_bytes(),
                        file_name="training_feedback.csv",
                        mime="text/csv")
+
+# Strumento rapido: aggiungi una riga di test per verificare la scrittura
+with st.expander("🧰 Strumenti rapidi"):
+    if st.button("Aggiungi riga di test (debug)"):
+        FEEDBACK.parent.mkdir(parents=True, exist_ok=True)
+        test_row = pd.DataFrame([{
+            "HighBP":0,"HighChol":0,"CholCheck":1,"BMI":22.2,"Smoker":0,"Stroke":0,"HeartDiseaseorAttack":0,"PhysActivity":1,
+            "Fruits":0,"Veggies":0,"HvyAlcoholConsump":0,"AnyHealthcare":1,"NoDocbcCost":0,"GenHlth":3,"MentHlth":0,"PhysHlth":0,
+            "DiffWalk":0,"Sex":0,"Age":30,"Education":4,"Income":4,
+            "Predicted":0,"Diabetes_012":0,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "model_type":"debug","model_artifact":"debug"
+        }])
+        if FEEDBACK.exists() and FEEDBACK.stat().st_size > 0:
+            old = pd.read_csv(FEEDBACK)
+            new = pd.concat([old, test_row], ignore_index=True)
+        else:
+            new = test_row
+        new.to_csv(FEEDBACK, index=False)
+        st.success(f"Riga di test aggiunta a: {FEEDBACK}")
 
 st.write("---")
 
@@ -170,7 +176,7 @@ if st.session_state.get("pending_record") is not None:
             out["model_type"] = st.session_state.get("pending_model_type", "sklearn")
             out["model_artifact"] = st.session_state.get("pending_model_artifact", "unknown.pkl")
 
-            if FEEDBACK.exists():
+            if FEEDBACK.exists() and FEEDBACK.stat().st_size > 0:
                 df_old = pd.read_csv(FEEDBACK)
                 df_new = pd.concat([df_old, out], ignore_index=True)
             else:
@@ -181,7 +187,7 @@ if st.session_state.get("pending_record") is not None:
             for k in ["pending_record","pending_pred_class","pending_model_type","pending_model_artifact"]:
                 st.session_state[k] = None
 
-            st.success(f"✅ Salvato in: {FEEDBACK.resolve()}")
+            st.success(f"✅ Salvato in: {FEEDBACK}")
         except Exception as e:
             st.error(f"Errore nel salvataggio: {e}")
 
