@@ -27,7 +27,11 @@ st.set_page_config(page_title="Valutazione Rischio Diabete", page_icon="🩺", l
 st.markdown("""
 <style>
 html, body { background: #f6f7fb; }
-div.block-container{ padding: 1.1rem .8rem !important; max-width: 1480px !important; }
+div.block-container{
+  /* ↑ più spazio sopra, senza esagerare */
+  padding: 1.8rem 1rem 1.4rem !important;
+  max-width: 1480px !important;
+}
 section[data-testid="stSidebar"]{display:none}
 header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
 
@@ -223,14 +227,11 @@ def git_auto_commit_push(file_path: Path, message: str | None = None):
     if message is None:
         message = f"Auto-update {rel} — {datetime.now().isoformat(timespec='seconds')}"
 
-    # pull --rebase per evitare divergenze
     _run_git(["git", "pull", "--rebase", "origin", GIT_BRANCH])
     _run_git(["git", "add", rel])
     code, out = _run_git(["git", "commit", "-m", message])
-    # se non c'è nulla da committare, esci silenziosamente
     if code != 0 and ("nothing to commit" in out.lower() or "no changes added to commit" in out.lower()):
         return
-    # prova il push (se fallisce, ignora)
     _run_git(["git", "push", "origin", GIT_BRANCH])
 
 def append_log_row(row: dict):
@@ -245,7 +246,6 @@ def append_log_row(row: dict):
     except Exception as e:
         print("[append_log_row]", e)
         return
-    # auto-commit & push (best-effort)
     git_auto_commit_push(LOG_CSV)
 
 def build_form_dict(**vals) -> dict:
@@ -312,6 +312,9 @@ def predict_with_proba(model, model_type: str, X: pd.DataFrame):
 
 # ========== HOME ==========
 def render_home():
+    # piccolo spacer globale
+    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+
     st.markdown(
         """<div class="hero-wow">
             <div class="hero-inner">
@@ -429,6 +432,9 @@ def show_contacts_ui():
         )
 
 def render_contacts():
+    # piccolo spacer globale
+    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+
     top = st.columns([1,3])[0]
     if top.button("⬅️ Torna alla Home"): go("home"); st.stop()
 
@@ -509,6 +515,9 @@ def render_contacts():
 
 # ========== FORM ==========
 def render_form():
+    # piccolo spacer globale
+    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+
     top = st.columns([1,3])[0]
     if top.button("⬅️ Torna alla Home"): go("home"); st.stop()
 
