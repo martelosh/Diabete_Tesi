@@ -4,46 +4,63 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 import pandas as pd
+import numpy as np
 import streamlit as st
 
-# === PATH PROGETTO / IMPORT ===
-PROJECT_ROOT = Path(__file__).resolve().parents[1]  # root del progetto
+# ==== PATH PROGETTO / IMPORT ====
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.utils import load_best_model, predict_with_model, preprocess_for_inference  # noqa: E402
 
-# === CONFIG & STILE ===
-st.set_page_config(page_title="Rischio Diabete — Demo (TEST)", page_icon="🧪", layout="wide")
-st.markdown("""
-<style>
-section[data-testid="stSidebar"]{display:none}
-header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
-div.block-container{padding-top:1.2rem;padding-bottom:1.2rem}
-.hero{
-  background: radial-gradient(1200px 600px at 8% 10%, rgba(0,120,255,.08), transparent 60%),
-              radial-gradient(1000px 500px at 90% 30%, rgba(255,60,140,.08), transparent 60%);
-  border:1px solid rgba(0,0,0,.06); border-radius:24px; padding:2rem;
-  box-shadow:0 10px 30px rgba(0,0,0,.06);
-}
-.card{border:1px solid rgba(0,0,0,.06); border-radius:18px; padding:1rem; background:#fff;
-      box-shadow:0 6px 16px rgba(0,0,0,.05)}
-.btn{display:inline-block; padding:.7rem 1rem; border-radius:14px; font-weight:600;
-    border:1px solid rgba(0,0,0,.1); background:#fff}
-.topbar{display:flex; gap:.5rem; margin-bottom:.5rem}
-.badge{display:inline-block;padding:.25rem .6rem;border-radius:999px;border:1px solid rgba(0,0,0,.1);font-size:.8rem;background:#fff}
-</style>
-""", unsafe_allow_html=True)
+# ==== CONFIG APP ====
+st.set_page_config(page_title="Rischio Diabete — TEST", page_icon="🧪", layout="wide")
 
+# ==== FILE FEEDBACK (SEMPLICE E UNICO) ====
 DATA_DIR = PROJECT_ROOT / "data"
-METRICS_DIR = DATA_DIR / "metrics"
 FEEDBACK = DATA_DIR / "training_feedback.csv"
+METRICS_DIR = DATA_DIR / "metrics"
 
-# === ROUTER STATO ===
-st.session_state.setdefault("view", "home")
-def go(view: str): st.session_state.view = view
+st.caption(f"📂 Feedback path (assoluto): {FEEDBACK.resolve()}")
+st.caption(f"📌 Working dir dell'app: {Path.cwd()}")
+st.caption(f"Esiste feedback? {'✅ sì' if FEEDBACK.exists() else '❌ no'}")
 
-# === HELPER: COSTRUISCI RECORD DAL FORM ===
+# Crea file vuoto con le colonne giuste se non esiste
+if not FEEDBACK.exists():
+    if st.button("Crea file feedback (vuoto)"):
+        FEEDBACK.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(columns=[
+            "HighBP","HighChol","CholCheck","BMI","Smoker","Stroke","HeartDiseaseorAttack","PhysActivity",
+            "Fruits","Veggies","HvyAlcoholConsump","AnyHealthcare","NoDocbcCost","GenHlth","MentHlth","PhysHlth",
+            "DiffWalk","Sex","Age","Education","Income","Predicted","Diabetes_012","timestamp","model_type","model_artifact"
+        ]).to_csv(FEEDBACK, index=False)
+        st.success(f"Creato: {FEEDBACK.resolve()}")
+
+# Pulsante per scaricare il file effettivamente usato
+if FEEDBACK.exists():
+    st.download_button("⬇️ Scarica training_feedback.csv",
+                       data=FEEDBACK.read_bytes(),
+                       file_name="training_feedback.csv",
+                       mime="text/csv")
+
+st.write("---")
+
+# ==== UI SEMPLICE (HOME + FORM) ====
+st.title("🧪 Rischio Diabete — Ambiente TEST")
+st.caption("Ambiente di prova per validare il flusso di predizione e il salvataggio del feedback.")
+
+# Carica modello
+model, model_type, meta = None, None, {}
+try:
+    model, model_type, meta = load_best_model()
+    st.success(f"Modello caricato: **{model_type}**")
+except Exception as e:
+    st.warning(f"Modello non caricato: {e}")
+
+st.subheader("📋 Form di autovalutazione")
+
+# --- Helper per record dal form ---
 def _build_record(**vals) -> pd.DataFrame:
     bmi = vals["peso"] / max((vals["altezza_cm"]/100.0)**2, 1e-6)
     return pd.DataFrame([{
@@ -57,88 +74,42 @@ def _build_record(**vals) -> pd.DataFrame:
         "Education":int(vals["education"]), "Income":int(vals["income"]),
     }])
 
-# === HOME ===
-def render_home():
-    st.markdown(
-        """
-        <div class="hero">
-          <h1>🧪 Rischio Diabete (TEST)</h1>
-          <p class="small">
-            Ambiente di prova. Predizione (classe 0/1/2) e feedback per il retraining. Include strumenti di debug.
-          </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.write("")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown("### 🎯 Obiettivo\n- Iterare rapidamente\n- Validare flussi\n- Generare feedback")
-    with c2:
-        st.markdown("### 📦 Modello")
-        try:
-            _, model_type, meta = load_best_model()
-            st.markdown(f"In uso: **{model_type}**")
-            sk = meta.get("sklearn_score"); ke = meta.get("keras_score")
-            st.caption(f"Sklearn CV: {sk:.4f}" if sk is not None else "Sklearn CV: n/d")
-            st.caption(f"Keras Val: {ke:.4f}" if ke is not None else "Keras Val: n/d")
-        except Exception as e:
-            st.warning(f"Modello non caricato: {e}")
-    with c3:
-        st.markdown("### 🔒 Privacy\nDati di test salvati in `data/training_feedback.csv`.")
-        st.caption("⚠️ Uso interno, non per diagnosi clinica.")
+# --- Form inputs ---
+col1, col2 = st.columns(2)
+with col1:
+    gender = st.selectbox("Sesso (0=femmina, 1=maschio)", [0, 1])
+    age = st.slider("Età", 18, 90, 40)
+    highbp = st.selectbox("Pressione alta?", [0, 1])
+    highchol = st.selectbox("Colesterolo alto?", [0, 1])
+    cholcheck = st.selectbox("Controllo colesterolo (ultimi 5 anni)?", [0, 1])
+    smoker = st.selectbox("Fumi?", [0, 1])
+    stroke = st.selectbox("Ictus in passato?", [0, 1])
+    heartdisease = st.selectbox("Malattie cardiache?", [0, 1])
+    physactivity = st.selectbox("Attività fisica regolare?", [0, 1])
+    fruits = st.selectbox("Frutta regolare?", [0, 1])
+with col2:
+    veggies = st.selectbox("Verdura regolare?", [0, 1])
+    hvyalcoh = st.selectbox("Consumo elevato di alcol?", [0, 1])
+    anyhealthcare = st.selectbox("Accesso a servizi sanitari?", [0, 1])
+    nomedicalcare = st.selectbox("Eviti cure per costi?", [0, 1])
+    genhlth = st.slider("Salute generale (1 ottima – 5 pessima)", 1, 5, 3)
+    menthlth = st.slider("Giorni con problemi mentali (30 gg)", 0, 30, 2)
+    physhlth = st.slider("Giorni con problemi fisici (30 gg)", 0, 30, 2)
+    diffwalk = st.selectbox("Difficoltà a camminare?", [0, 1])
+    education = st.slider("Istruzione (1–6)", 1, 6, 4)
+    income = st.slider("Reddito (1–8)", 1, 8, 4)
 
-    st.write("")
-    a, b, _ = st.columns([1,1,1])
-    with a:
-        if st.button("📝 Apri Form", type="primary", use_container_width=True): go("form")
-    with b:
-        if st.button("📈 Apri Monitoraggio", use_container_width=True): go("monitor")
+c1, c2 = st.columns(2)
+with c1: peso = st.number_input("Peso (kg)", 30.0, 250.0, 70.0, 0.5)
+with c2: altezza_cm = st.number_input("Altezza (cm)", 100.0, 220.0, 170.0, 0.5)
+bmi = peso / max((altezza_cm/100.0)**2, 1e-6)
+st.caption(f"👉 BMI: **{bmi:.2f}**")
 
-# === FORM (con feedback) ===
-def render_form():
-    st.markdown('<div class="topbar">', unsafe_allow_html=True)
-    if st.button("⬅️ Home"): go("home"); st.stop()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown("## 📝 Form di autovalutazione (TEST)")
-    try:
-        model, model_type, meta = load_best_model()
-        st.caption(f"Selezione automatica → usando: **{model_type}**")
-    except Exception as e:
-        st.error(f"Errore nel caricamento del modello: {e}"); return
-
-    col1, col2 = st.columns(2)
-    with col1:
-        gender = st.selectbox("Sesso (0=femmina, 1=maschio)", [0, 1])
-        age = st.slider("Età", 18, 90, 40)
-        highbp = st.selectbox("Pressione alta?", [0, 1])
-        highchol = st.selectbox("Colesterolo alto?", [0, 1])
-        cholcheck = st.selectbox("Controllo colesterolo (ultimi 5 anni)?", [0, 1])
-        smoker = st.selectbox("Fumi?", [0, 1])
-        stroke = st.selectbox("Ictus in passato?", [0, 1])
-        heartdisease = st.selectbox("Malattie cardiache?", [0, 1])
-        physactivity = st.selectbox("Attività fisica regolare?", [0, 1])
-        fruits = st.selectbox("Frutta regolare?", [0, 1])
-    with col2:
-        veggies = st.selectbox("Verdura regolare?", [0, 1])
-        hvyalcoh = st.selectbox("Consumo elevato di alcol?", [0, 1])
-        anyhealthcare = st.selectbox("Accesso a servizi sanitari?", [0, 1])
-        nomedicalcare = st.selectbox("Eviti cure per costi?", [0, 1])
-        genhlth = st.slider("Salute generale (1 ottima – 5 pessima)", 1, 5, 3)
-        menthlth = st.slider("Giorni con problemi mentali (30 gg)", 0, 30, 2)
-        physhlth = st.slider("Giorni con problemi fisici (30 gg)", 0, 30, 2)
-        diffwalk = st.selectbox("Difficoltà a camminare?", [0, 1])
-        education = st.slider("Istruzione (1–6)", 1, 6, 4)
-        income = st.slider("Reddito (1–8)", 1, 8, 4)
-
-    c1, c2 = st.columns(2)
-    with c1: peso = st.number_input("Peso (kg)", 30.0, 250.0, 70.0, 0.5)
-    with c2: altezza_cm = st.number_input("Altezza (cm)", 100.0, 220.0, 170.0, 0.5)
-    bmi = peso / max((altezza_cm/100.0)**2, 1e-6)
-    st.caption(f"👉 BMI: **{bmi:.2f}**")
-
-    if st.button("🧪 Calcola predizione", type="primary"):
+# --- Predizione + feedback ---
+if st.button("🧪 Calcola predizione", type="primary", use_container_width=True):
+    if model is None:
+        st.error("Nessun modello caricato.")
+    else:
         rec = _build_record(
             gender=gender, age=age, highbp=highbp, highchol=highchol, cholcheck=cholcheck,
             smoker=smoker, stroke=stroke, heartdisease=heartdisease, physactivity=physactivity,
@@ -146,155 +117,68 @@ def render_form():
             nomedicalcare=nomedicalcare, genhlth=genhlth, menthlth=menthlth, physhlth=physhlth,
             diffwalk=diffwalk, education=education, income=income, peso=peso, altezza_cm=altezza_cm
         )
-        X = preprocess_for_inference(rec, meta)
         try:
+            X = preprocess_for_inference(rec, meta)
             pred = predict_with_model(model, model_type, X)
             pred_class = int(pred[0])
+            st.session_state["pending_record"] = rec
+            st.session_state["pending_pred_class"] = pred_class
+            st.session_state["pending_model_type"] = model_type
+
+            # nome artefatto (best sklearn o keras)
+            artifacts_dir = PROJECT_ROOT / "data" / "grid_search_results"
+            if model_type == "sklearn":
+                cand = list(artifacts_dir.glob("*_optimized_model.pkl"))
+                model_artifact = cand[0].name if cand else "unknown.pkl"
+            else:
+                model_artifact = "best_keras_model.keras" if (artifacts_dir / "best_keras_model.keras").exists() else "best_keras_model.h5"
+            st.session_state["pending_model_artifact"] = model_artifact
+
+            st.success(f"Predizione: **{pred_class}**  (0=No, 1=Pre, 2=Diabete)")
         except Exception as e:
-            st.error(f"Errore durante la predizione: {e}"); return
+            st.error(f"Errore durante la predizione: {e}")
 
-        st.session_state["pending_record"] = rec
-        st.session_state["pending_model_type"] = model_type
+# --- Conferma feedback e salvataggio ---
+if st.session_state.get("pending_record") is not None:
+    pred_class = st.session_state.get("pending_pred_class", 0)
+    fb = st.radio("Questo risultato è corretto?", ["Sì", "No"], horizontal=True, index=0)
+    label = pred_class if fb == "Sì" else st.selectbox("Valore corretto:", [0, 1, 2], index=pred_class)
 
-        # nome artefatto (per report)
-        artifacts_dir = PROJECT_ROOT / "data" / "grid_search_results"
-        if model_type == "sklearn":
-            cand = list(artifacts_dir.glob("*_optimized_model.pkl"))
-            model_artifact = cand[0].name if cand else "unknown.pkl"
-        else:
-            model_artifact = "best_keras_model.keras" if (artifacts_dir / "best_keras_model.keras").exists() else "best_keras_model.h5"
-        st.session_state["pending_model_artifact"] = model_artifact
-        st.session_state["pending_pred_class"] = pred_class
-
-        st.success(f"Predizione: **{pred_class}**  (0=No, 1=Pre, 2=Diabete)")
-        st.info("Conferma il feedback e poi salva.")
-
-    # Sezione DEBUG opzionale
-    with st.expander("🔍 Debug (TEST)"):
+    if st.button("💾 Salva con feedback", use_container_width=True):
         try:
-            _, model_type, meta = load_best_model()
-            st.write("**Model type:**", model_type)
-            st.write("**Meta:**", meta)
-        except Exception as e:
-            st.write("Model non caricato:", e)
-        if st.session_state.get("pending_record") is not None:
-            st.write("**Input record:**")
-            st.dataframe(st.session_state["pending_record"], use_container_width=True)
-            try:
-                X_dbg = preprocess_for_inference(st.session_state["pending_record"], meta)
-                st.write("**X preprocessato (per inferenza):**")
-                st.dataframe(X_dbg, use_container_width=True)
-            except Exception as e:
-                st.write("Errore preprocess debug:", e)
-
-    if st.session_state.get("pending_record") is not None:
-        pred_class = st.session_state.get("pending_pred_class", 0)
-        fb = st.radio("Questo risultato è corretto?", ["Sì", "No"], horizontal=True, index=0)
-        label = pred_class if fb == "Sì" else st.selectbox("Valore corretto:", [0, 1, 2], index=pred_class)
-
-        if st.button("💾 Salva con feedback"):
             FEEDBACK.parent.mkdir(parents=True, exist_ok=True)
             out = st.session_state["pending_record"].copy()
             out["Predicted"] = pred_class
             out["Diabetes_012"] = int(label)
             out["timestamp"] = datetime.now(timezone.utc).isoformat()
-            out["model_type"] = st.session_state["pending_model_type"]
-            out["model_artifact"] = st.session_state["pending_model_artifact"]
+            out["model_type"] = st.session_state.get("pending_model_type", "sklearn")
+            out["model_artifact"] = st.session_state.get("pending_model_artifact", "unknown.pkl")
 
             if FEEDBACK.exists():
                 df_old = pd.read_csv(FEEDBACK)
                 df_new = pd.concat([df_old, out], ignore_index=True)
             else:
                 df_new = out
+
             df_new.to_csv(FEEDBACK, index=False)
-
-            for k in ["pending_record","pending_model_type","pending_model_artifact","pending_pred_class"]:
+            # pulizia stato
+            for k in ["pending_record","pending_pred_class","pending_model_type","pending_model_artifact"]:
                 st.session_state[k] = None
-            st.success("✅ Salvato in data/training_feedback.csv.")
 
-# === REPORT INLINE (come tua versione originale) ===
-def _build_reports_inline():
-    if not FEEDBACK.exists():
-        return False, f"Non trovo {FEEDBACK}. Fai almeno un invio dal Form."
-    df = pd.read_csv(FEEDBACK)
-    if df.empty:
-        return False, f"{FEEDBACK.name} è vuoto."
+            st.success(f"✅ Salvato in: {FEEDBACK.resolve()}")
+        except Exception as e:
+            st.error(f"Errore nel salvataggio: {e}")
 
-    df["is_correct"] = (df["Predicted"] == df["Diabetes_012"]).astype(int)
-    if "timestamp" in df.columns:
-        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
-
-    METRICS_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Weekly (settimana = lunedì)
-    if "timestamp" in df.columns and df["timestamp"].notna().any():
-        weekly = (
-            df.assign(week_start=df["timestamp"].dt.to_period("W-MON").apply(lambda p: p.start_time))
-              .groupby("week_start")
-              .agg(tests=("is_correct","size"), accuracy=("is_correct","mean"))
-              .reset_index()
-        )
-        weekly["accuracy"] = weekly["accuracy"].round(4)
-        weekly.to_csv(METRICS_DIR / "weekly_report.csv", index=False)
-
-    # by model
-    if "model_artifact" in df.columns:
-        by_model = (
-            df.groupby("model_artifact")
-              .agg(tests=("is_correct","size"), accuracy=("is_correct","mean"))
-              .reset_index()
-        )
-        by_model["accuracy"] = by_model["accuracy"].round(4)
-        by_model.to_csv(METRICS_DIR / "by_model_report.csv", index=False)
-
-    # confusion
-    cm = pd.crosstab(df["Diabetes_012"], df["Predicted"], rownames=["True"], colnames=["Pred"])
-    cm.to_csv(METRICS_DIR / "confusion_matrix_overall.csv")
-
-    return True, "Report rigenerati dal CSV."
-
-# === MONITORAGGIO ===
-def render_monitor():
-    st.markdown('<div class="topbar">', unsafe_allow_html=True)
-    if st.button("⬅️ Home"): go("home"); st.stop()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown("## 📈 Monitoraggio modello")
-    weekly_path = METRICS_DIR / "weekly_report.csv"
-    by_model_path = METRICS_DIR / "by_model_report.csv"
-    cm_path = METRICS_DIR / "confusion_matrix_overall.csv"
-
-    if not (weekly_path.exists() or by_model_path.exists() or cm_path.exists()):
-        ok, msg = _build_reports_inline()
-        (st.success if ok else st.warning)(msg)
-
-    if st.button("🔄 Aggiorna report"):
-        ok, msg = _build_reports_inline()
-        (st.success if ok else st.warning)(msg)
-
-    if weekly_path.exists():
-        weekly = pd.read_csv(weekly_path, parse_dates=["week_start"])
-        st.subheader("Andamento settimanale")
-        if not weekly.empty:
-            st.line_chart(weekly.set_index("week_start")[["tests","accuracy"]])
-            last = weekly.sort_values("week_start").tail(1)
-            c1, c2 = st.columns(2)
-            c1.metric("Test ultima settimana", int(last["tests"].iloc[0]))
-            c2.metric("Accuracy ultima settimana", f"{last['accuracy'].iloc[0]*100:.1f}%")
-        else:
-            st.info("Nessun dato settimanale ancora.")
-
-    if by_model_path.exists():
-        st.subheader("Prestazioni per modello")
-        st.dataframe(pd.read_csv(by_model_path), use_container_width=True)
-
-    if cm_path.exists():
-        st.subheader("Confusion matrix (complessiva)")
-        st.dataframe(pd.read_csv(cm_path, index_col=0), use_container_width=True)
-
-# === ROUTING ===
-v = st.session_state.view
-if v == "home":    render_home()
-elif v == "form":  render_form()
-elif v == "monitor": render_monitor()
-else:              go("home")
+# === Debug opzionale ===
+with st.expander("🔍 Debug"):
+    st.write("Model type:", model_type)
+    st.write("Meta:", meta)
+    if st.session_state.get("pending_record") is not None:
+        st.write("Input record:")
+        st.dataframe(st.session_state["pending_record"], use_container_width=True)
+        try:
+            X_dbg = preprocess_for_inference(st.session_state["pending_record"], meta)
+            st.write("X preprocessato:")
+            st.dataframe(X_dbg, use_container_width=True)
+        except Exception as e:
+            st.write("Errore preprocess debug:", e)
