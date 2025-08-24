@@ -40,12 +40,6 @@ Thumbs.db
 # !data/keep_this_file.csv
 
 # === Models and weights ===
-*.pkl
-*.joblib
-*.h5
-*.pt
-*.onnx
-models/
 
 # === Environment files (optional) ===
 .env
