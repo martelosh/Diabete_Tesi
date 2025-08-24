@@ -35,13 +35,6 @@ Thumbs.db
 *.swp
 
 # === Data files ===
-*.csv
-*.tsv
-*.xls
-*.xlsx
-*.parquet
-*.h5
-*.db
 
 # If you want to keep specific data:
 # !data/keep_this_file.csv
