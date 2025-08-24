@@ -19,7 +19,7 @@ st.set_page_config(page_title="Rischio Diabete — TEST", page_icon="🧪", layo
 
 # ==== PATH DATI ====
 DATA_DIR = PROJECT_ROOT / "data"
-FEEDBACK = DATA_DIR / "feedback_test.csv"   # <<< SOLO QUESTO CAMBIATO (prima era training_feedback.csv)
+FEEDBACK = DATA_DIR / "feedback_test.csv"   # <<< nuovo CSV per il TEST
 METRICS_DIR = DATA_DIR / "metrics"
 
 # -----------------------------------------------------------------------------
@@ -171,7 +171,7 @@ def page_form():
             except Exception as e:
                 st.error(f"Errore durante la predizione: {e}")
 
-    # Feedback + salvataggio
+    # Feedback + salvataggio (crea il CSV se non esiste)
     if st.session_state.get("pending_record") is not None:
         pred_class = st.session_state.get("pending_pred_class", 0)
         fb = st.radio("Questo risultato è corretto?", ["Sì", "No"], horizontal=True, index=0)
@@ -191,7 +191,7 @@ def page_form():
                     df_old = pd.read_csv(FEEDBACK)
                     df_new = pd.concat([df_old, out], ignore_index=True)
                 else:
-                    df_new = out
+                    df_new = out  # <-- crea il file alla prima scrittura
 
                 df_new.to_csv(FEEDBACK, index=False)
 
