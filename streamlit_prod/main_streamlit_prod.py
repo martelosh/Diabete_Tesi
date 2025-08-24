@@ -12,47 +12,54 @@ import streamlit as st
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-
 from src.utils import load_best_model, preprocess_for_inference  # noqa: E402
 
 # ========== PAGE CONFIG & THEME ==========
 st.set_page_config(page_title="Valutazione Rischio Diabete", page_icon="🩺", layout="wide")
 st.markdown("""
 <style>
+/* Layout generale con più aria ai lati */
 html, body { background: #f6f7fb; }
-div.block-container{ padding: 2.2rem 1rem !important; max-width: 1180px !important; }
+div.block-container{
+  padding: 3rem 2rem !important;     /* ↑↑ margini */
+  max-width: 1280px !important;       /* ↑ larghezza */
+}
+
+/* Nascondi sidebar/header icona */
 section[data-testid="stSidebar"]{display:none}
 header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
 
 /* Hero */
 .hero{
-  border-radius: 26px;
-  padding: clamp(1.4rem, 2.2vw, 2.2rem);
+  border-radius: 28px;
+  padding: clamp(1.6rem, 2.4vw, 2.6rem);
   border: 1px solid rgba(16,24,40,.08);
   background:
     radial-gradient(1200px 600px at 8% 10%, rgba(0,120,255,.08), transparent 60%),
     radial-gradient(1000px 500px at 90% 30%, rgba(255,60,140,.08), transparent 60%),
     linear-gradient(180deg, #ffffff, #fafbff);
   box-shadow: 0 16px 42px rgba(16,24,40,.08);
+  margin-bottom: 1.4rem;              /* spazio sotto */
 }
-.hero h1{ margin: 0 0 .25rem }
+.hero h1{ margin: 0 0 .35rem }
 .hero p { margin: 0; opacity: .9 }
 
-/* Card */
+/* Card pulite con spazio */
 .card{
   border: 1px solid rgba(16,24,40,.08);
-  border-radius: 18px;
+  border-radius: 20px;
   background: #fff;
   box-shadow: 0 8px 22px rgba(16,24,40,.06);
-  padding: 1rem 1.2rem;
+  padding: 1.1rem 1.25rem;
   transition: transform .12s ease, box-shadow .12s ease;
+  margin-bottom: 1rem;                /* aria tra card */
 }
 .card:hover{ transform: translateY(-1px); box-shadow: 0 12px 28px rgba(16,24,40,.08); }
-.badge{ display:inline-block; padding:.3rem .65rem; border-radius:999px; border:1px solid rgba(16,24,40,.12); background:#fff; font-size:.78rem }
+.badge{ display:inline-block; padding:.34rem .7rem; border-radius:999px; border:1px solid rgba(16,24,40,.12); background:#fff; font-size:.8rem }
 
 /* Pulsanti */
 .stButton>button[kind="primary"]{
-  border-radius: 14px; font-weight: 700; padding: .72rem 1rem;
+  border-radius: 14px; font-weight: 700; padding: .78rem 1.05rem;
   box-shadow: 0 12px 26px rgba(16,24,40,.12);
 }
 .stButton>button{ border-radius: 12px; font-weight: 600 }
@@ -67,11 +74,14 @@ header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
 /* Risultato card colorata */
 .result{ border-left-width: 6px; border-left-style: solid; padding-left: 1rem; }
 
-/* Griglia contatti */
-.contact-grid{ display:grid; grid-template-columns:1fr; gap:.9rem; }
-@media (min-width: 720px){ .contact-grid{ grid-template-columns: 1fr 1fr; } }
+/* Sezioni */
+.section{ margin-top: 1.4rem; }
 
-/* Dark */
+/* Griglia contatti con spazio laterale */
+.contact-grid{ display:grid; grid-template-columns:1fr; gap:1rem; }
+@media (min-width: 780px){ .contact-grid{ grid-template-columns: 1fr 1fr; } }
+
+/* Dark mode */
 @media (prefers-color-scheme: dark){
   html, body { background: #0f1117; }
   .hero{ border-color: rgba(255,255,255,.08); background: linear-gradient(180deg,#0f1117,#12131a); color:#e9e9ea }
@@ -81,18 +91,25 @@ header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
 </style>
 """, unsafe_allow_html=True)
 
-# ========== NORMALIZZAZIONE COLONNE CONTATTI ==========
+# ========== UTILS COLONNE CONTATTI ==========
 CONTACTS_CSV = PROJECT_ROOT / "data" / "ospedali_milano_comuni_mapping.csv"
 
 def _slug(s: str) -> str:
     s = str(s)
-    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")  # rimuove accenti/es. d’aria -> daria
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")  # rimuove accenti
     s = s.lower()
     s = re.sub(r"[^a-z0-9]+", "_", s).strip("_")
     return s
 
+def _norm_text(s: str) -> str:
+    s = str(s)
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    s = s.casefold()
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
 def _canonicalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    # Mappa robusta dai nomi "slug" del CSV alla nostra convenzione
+    # nomi attesi dal tuo CSV (robusti a apostrofi/slash)
     mapping = {
         "comune": "comune",
         "citta": "comune",
@@ -100,7 +117,8 @@ def _canonicalize_columns(df: pd.DataFrame) -> pd.DataFrame:
         "ospedale_di_riferimento_linea_daria_macro_area": "ospedale",
         "ospedale_di_riferimento_linea_d_aria_macro_area": "ospedale",
         "ospedale_di_riferimento": "ospedale",
-        "struttura": "ospedale",
+        "ospedale_di_riferimento_macro_area": "ospedale",
+        "ospedale_di_riferimento_linea_daria": "ospedale",
         "indirizzo_ospedale": "indirizzo",
         "indirizzo": "indirizzo",
         "telefono": "telefono",
@@ -112,9 +130,13 @@ def _canonicalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     new_cols = {}
     for c in df.columns:
         slug = _slug(c)
-        new_cols[c] = mapping.get(slug, slug)  # se non mappato, tiene lo slug
+        new_cols[c] = mapping.get(slug, slug)
     df = df.rename(columns=new_cols)
-    # Garantisco colonne chiave se non presenti
+    # normalizzazione testi base
+    for c in ["comune","ospedale","indirizzo","telefono","prenotazioni","note"]:
+        if c in df.columns:
+            df[c] = df[c].astype(str).str.strip()
+    # colonne chiave sempre presenti
     for req in ["comune", "ospedale", "indirizzo", "telefono"]:
         if req not in df.columns:
             df[req] = pd.NA
@@ -124,14 +146,23 @@ def _canonicalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 def load_contacts():
     if not CONTACTS_CSV.exists():
         return pd.DataFrame(), []
-    # utf-8-sig per eventuale BOM da Excel; dtype=str per non perdere zeri nei telefoni
-    df = pd.read_csv(CONTACTS_CSV, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+    # prova utf-8-sig, fallback latin-1 (file Excel esportati)
+    try:
+        df = pd.read_csv(CONTACTS_CSV, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+    except Exception:
+        df = pd.read_csv(CONTACTS_CSV, encoding="latin-1", dtype=str, keep_default_na=False)
+
     df = _canonicalize_columns(df)
-    # pulizia base
-    for c in ["comune","ospedale","indirizzo","telefono","prenotazioni","note"]:
-        if c in df.columns:
-            df[c] = df[c].astype(str).str.strip()
-    comuni = sorted(x for x in df["comune"].unique() if str(x).strip())
+
+    # pulizia valori 'comune' + de-dup + sort accent-insensitive
+    comuni = (
+        pd.Series(df["comune"].astype(str).str.strip())
+        .replace({"": np.nan})
+        .dropna()
+        .drop_duplicates()
+        .sort_values(key=lambda s: s.str.normalize("NFKD").str.encode("ascii","ignore").str.decode("ascii").str.casefold())
+        .tolist()
+    )
     return df, comuni
 
 contacts_df, comuni_options = load_contacts()
@@ -230,13 +261,11 @@ def render_form():
         st.session_state.last_pred = cls
         st.session_state.last_prob = prob
 
-        # Card risultato (colore in base a classe/prob)
+        # Card risultato (colore in base a classe)
         if cls == 2:
             color, label = "#ef4444", "Rischio alto (2)"
-        elif cls == 1 and prob >= 0.65:
-            color, label = "#f59e0b", "Pre-diabete alto (1)"
         elif cls == 1:
-            color, label = "#fbbf24", "Pre-diabete (1)"
+            color, label = "#f59e0b", "Rischio medio (1)"
         else:
             color, label = "#10b981", "Basso rischio (0)"
 
@@ -255,63 +284,66 @@ def render_form():
             """,
             unsafe_allow_html=True
         )
-        st.toast("Consiglio disponibile più sotto in base al risultato.", icon="💡")
 
-    # — Consigli sintetici (inline, sempre visibili dopo un risultato)
+    # — Consigli (secondo richiesta)
     if st.session_state.last_pred is not None:
-        cls = st.session_state.last_pred
-        prob = float(st.session_state.last_prob or 0)
-        with st.container():
-            if cls == 2:
-                st.info("🔔 **Consiglio**: rischio compatibile con diabete → contatta il **medico di base** o una **struttura ospedaliera** per una visita.")
-            elif cls == 1 and prob >= 0.65:
-                st.warning("⚠️ **Consiglio**: condizione pre-diabetica **probabilità elevata** → prenota un controllo e cura stile di vita.")
-            elif cls == 1:
-                st.info("ℹ️ **Consiglio**: condizione pre-diabetica → stile di vita sano e **controllo non urgente**.")
-            else:
-                st.success("✅ **Consiglio**: basso rischio → mantieni uno stile equilibrato e fai controlli periodici.")
+        cls = int(st.session_state.last_pred)
+        if cls == 0:
+            st.info("✅ **Basso rischio** — se vuoi puoi comunque **prenotare una visita di controllo**.")
+        else:
+            st.warning("⚠️ **Rischio medio/alto** — è **fortemente consigliato** prenotare un **controllo medico**.")
 
-    # — Sezione contatti (dopo calcolo)
-    st.write("")
-    st.markdown("### 📍 Prenota vicino a te")
+    # — Sezione contatti (ricerca + select + dettagli)
+    st.markdown("### 📍 Prenota vicino a te", help="Cerca il comune e visualizza l'ospedale di riferimento e i contatti.")
     if contacts_df.empty or not comuni_options:
         st.warning("Contatti non trovati. Verifica il file `data/ospedali_milano_comuni_mapping.csv`.")
         return
 
-    disable_select = st.session_state.last_pred is None
-    placeholder = "Cerca il tuo comune…" if not disable_select else "Prima calcola il risultato"
-    selected = st.selectbox("Seleziona il comune", comuni_options, index=None,
-                            placeholder=placeholder, disabled=disable_select)
+    col_search, col_select = st.columns([1, 2])
+
+    # Ricerca testuale (accent-insensitive)
+    with col_search:
+        q = st.text_input("🔎 Cerca comune", placeholder="Scrivi almeno 2 lettere…")
+
+    if q and len(q.strip()) >= 2:
+        qn = _norm_text(q)
+        options = [c for c in comuni_options if qn in _norm_text(c)]
+        if not options:
+            st.info("Nessun comune trovato con questo filtro.")
+    else:
+        options = comuni_options
+
+    with col_select:
+        selected = st.selectbox("Seleziona il comune", options, index=None, placeholder="Seleziona…")
+
     if selected:
         st.session_state.selected_comune = selected
 
     if st.session_state.selected_comune:
-        sub = contacts_df[contacts_df["comune"].astype(str).str.lower()
-                          == st.session_state.selected_comune.lower()]
+        sel = st.session_state.selected_comune
+        mask = contacts_df["comune"].astype(str).map(_norm_text).eq(_norm_text(sel))
+        sub = contacts_df.loc[mask].copy()
+
         if sub.empty:
             st.info("Nessun contatto trovato per il comune selezionato.")
             return
 
-        st.markdown("#### Strutture e contatti")
-        st.markdown('<div class="contact-grid">', unsafe_allow_html=True)
+        st.markdown('<div class="contact-grid section">', unsafe_allow_html=True)
         for _, row in sub.iterrows():
-            osp = str(row.get("ospedale", "")).strip()
-            ind = str(row.get("indirizzo", "")).strip()
+            osp = str(row.get("ospedale", "")).strip() or "Ospedale di riferimento"
             tel = str(row.get("telefono", "")).strip()
+            ind = str(row.get("indirizzo", "")).strip()
             cup = str(row.get("prenotazioni", "")).strip()
             note = str(row.get("note", "")).strip()
 
             st.markdown(
                 f"""
                 <div class="card">
-                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
-                    <div style="font-weight:750">{osp or 'Ospedale di riferimento'}</div>
-                    {'<span class="badge">CUP</span>' if cup else ''}
-                  </div>
-                  <div style="opacity:.9;margin-top:.35rem">{ind or '—'}</div>
-                  <div style="margin-top:.35rem">{'📞 '+tel if tel else ''}</div>
-                  <div style="margin-top:.35rem">{'🗓️ '+cup if cup else ''}</div>
-                  <div style="margin-top:.35rem;opacity:.85">{'📝 '+note if note else ''}</div>
+                  <div style="font-weight:750; font-size:1.02rem; margin-bottom:.25rem">{osp}</div>
+                  <div style="margin:.2rem 0">{'📞 <b>Telefono:</b> ' + tel if tel else ''}</div>
+                  <div style="margin:.2rem 0">{'📍 <b>Indirizzo:</b> ' + ind if ind else ''}</div>
+                  <div style="margin:.2rem 0">{'🗓️ <b>Prenotazioni/CUP:</b> ' + cup if cup else ''}</div>
+                  <div style="margin:.2rem 0; opacity:.9">{'📝 <b>Note:</b> ' + note if note else ''}</div>
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -319,8 +351,12 @@ def render_form():
         st.markdown('</div>', unsafe_allow_html=True)
 
         csv_bytes = sub.to_csv(index=False).encode("utf-8")
-        st.download_button("⬇️ Scarica contatti (CSV)", csv_bytes,
-                           file_name=f"contatti_{st.session_state.selected_comune}.csv", use_container_width=True)
+        st.download_button(
+            "⬇️ Scarica contatti (CSV)",
+            csv_bytes,
+            file_name=f"contatti_{_norm_text(st.session_state.selected_comune)}.csv",
+            use_container_width=True,
+        )
 
 # ========== ROUTING ==========
 if st.session_state.view == "home":
