@@ -19,14 +19,40 @@ from src.utils import load_best_model, predict_with_model, preprocess_for_infere
 st.set_page_config(page_title="Rischio Diabete — Demo", page_icon="🩺", layout="wide")
 st.markdown("""
 <style>
+/* Nascondi sidebar e bottone header */
 section[data-testid="stSidebar"]{display:none}
 header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
 
-/* solo un pochino più in basso rispetto a 1.2rem */
-div.block-container{padding-top:2rem;padding-bottom:1.6rem}
+/* Un filo più in basso rispetto a prima */
+div.block-container{padding-top:2.2rem;padding-bottom:1.6rem}
 
-/* (lascia pure .hero, .card, .btn, .topbar se già presenti) */
+/* Hero box */
+.hero{
+  background: radial-gradient(1200px 600px at 8% 10%, rgba(0,120,255,.08), transparent 60%),
+              radial-gradient(1000px 500px at 90% 30%, rgba(255,60,140,.08), transparent 60%);
+  border:1px solid rgba(0,0,0,.06); border-radius:24px; padding:2rem;
+  box-shadow:0 10px 30px rgba(0,0,0,.06);
+}
+/* Centra solo il titolo dell’hero (e volendo anche il testo) */
+.hero h1{ text-align:center; margin:0 0 .25rem 0; }
+.hero p{ text-align:center; margin:0; } /* opzionale: centra il sottotitolo */
+
+/* Card generiche */
+.card{
+  border:1px solid rgba(0,0,0,.06); border-radius:18px; padding:1rem; background:#fff;
+  box-shadow:0 6px 16px rgba(0,0,0,.05);
+}
+
+/* Bottoni base */
+.btn{
+  display:inline-block; padding:.7rem 1rem; border-radius:14px; font-weight:600;
+  border:1px solid rgba(0,0,0,.1); background:#fff;
+}
+
+/* Barra superiore (se usata) */
+.topbar{display:flex; gap:.5rem; margin-bottom:.5rem}
 </style>
+
 
 
 """, unsafe_allow_html=True)
