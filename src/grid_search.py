@@ -3,7 +3,7 @@
 from pathlib import Path
 import os, json, pickle
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
-from sklearn.linear_model import SGDClassifier
+from sklearn.linear_model import SGDClassifier  # (NB: qui non serve importare LogisticRegression)
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
@@ -37,6 +37,14 @@ param_grids = {
     "KNN": {
         "n_neighbors": [3, 5, 7],
         "weights": ["uniform", "distance"],
+    },
+    # >>> AGGIUNTA: griglia per LogisticRegression (chiave 'LogReg' come in model_training) <<<
+    "LogReg": {
+        "C": [0.1, 1.0, 3.0, 10.0],
+        "solver": ["lbfgs", "saga"],
+        "penalty": ["l2", "none"],
+        "max_iter": [500, 1000],
+        "class_weight": [None, "balanced"],
     },
     # Aggiungi queste solo se le librerie sono installate
     "XGBoost": {

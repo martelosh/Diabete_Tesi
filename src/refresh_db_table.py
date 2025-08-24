@@ -10,7 +10,7 @@ from src.data_preprocessing import (
     load_data_from_csv,
     preprocess_data,       # pulizia + scaling
     append_dataframe_to_db,
-    truncate_table,        # <-- usa quella già nel modulo
+    truncate_table        # <-- usa quella già nel modulo
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

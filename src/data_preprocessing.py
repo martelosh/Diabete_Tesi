@@ -52,3 +52,11 @@ def append_dataframe_to_db(df: pd.DataFrame, table_name: str, engine):
     """Appende righe a una tabella esistente."""
     df.to_sql(name=table_name, con=engine, if_exists="append", index=False)
     print(f"Dati aggiunti alla tabella '{table_name}'")
+
+def truncate_table(engine, table_name: str):
+    """Svuota rapidamente la tabella. Se TRUNCATE non è permesso, esegue DELETE."""
+    with engine.begin() as conn:
+        try:
+            conn.execute(text(f"TRUNCATE TABLE {table_name}"))
+        except Exception:
+            conn.execute(text(f"DELETE FROM {table_name}"))

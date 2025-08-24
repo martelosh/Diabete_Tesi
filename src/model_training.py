@@ -11,8 +11,17 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 
-from xgboost import XGBClassifier
-from lightgbm import LGBMClassifier
+# >>> MODIFICA: import opzionali (prima erano obbligatori) <<<
+try:
+    from xgboost import XGBClassifier
+    _HAS_XGB = True
+except Exception:
+    _HAS_XGB = False
+try:
+    from lightgbm import LGBMClassifier
+    _HAS_LGBM = True
+except Exception:
+    _HAS_LGBM = False
 
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Dense, Dropout
@@ -49,9 +58,13 @@ def _candidate_models(random_state=42):
         "RandomForest": RandomForestClassifier(n_estimators=200, random_state=random_state),
         "KNN": KNeighborsClassifier(),
         "LogReg": LogisticRegression(max_iter=1000),
-        "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric="logloss", random_state=random_state, verbosity=0, n_estimators=300),
-        "LightGBM": LGBMClassifier(random_state=random_state, verbosity=-1, n_estimators=300),
     }
+    # >>> MODIFICA: includi solo se le librerie sono disponibili <<<
+    if _HAS_XGB:
+        models["XGBoost"] = XGBClassifier(use_label_encoder=False, eval_metric="logloss",
+                                          random_state=random_state, verbosity=0, n_estimators=300)
+    if _HAS_LGBM:
+        models["LightGBM"] = LGBMClassifier(random_state=random_state, verbosity=-1, n_estimators=300)
     return models
 
 def evaluate_models_cross_validation(x_train, y_train, n_splits=5, random_state=42):
