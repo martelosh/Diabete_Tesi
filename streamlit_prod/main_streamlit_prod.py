@@ -4,9 +4,8 @@ import re
 import unicodedata
 import csv
 import os
-import base64
 import json
-import requests
+import subprocess
 from uuid import uuid4
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +19,7 @@ import pydeck as pdk
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
 from src.utils import load_best_model, preprocess_for_inference  # noqa: E402
 
 # ========== PAGE CONFIG & THEME ==========
@@ -104,15 +104,12 @@ header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
 
 # ========== FILES & CONFIG ==========
 CONTACTS_CSV = PROJECT_ROOT / "data" / "ospedali_milano_comuni_mapping.csv"
-LOG_CSV      = PROJECT_ROOT / "data" / "prod_interactions.csv"  # log interazioni
+LOG_CSV      = PROJECT_ROOT / "data" / "prod_interactions.csv"
 MILANO_LAT, MILANO_LON = 45.4642, 9.1900
 
-# --- GitHub auto-push config (opzionale) ---
-GH_PUSH_ENABLED = os.getenv("GH_PUSH_ENABLED", "0").lower() in {"1", "true", "yes"}
-GH_TOKEN   = os.getenv("GITHUB_TOKEN", "")
-GH_REPO    = os.getenv("GITHUB_REPO", "KirollosSeif/Diabete")
-GH_BRANCH  = os.getenv("GITHUB_BRANCH", "main")
-GH_LOG_PATH = os.getenv("GITHUB_LOG_PATH", "data/prod_interactions.csv")
+# Auto-commit/push via git CLI (senza env/token). Lascia True.
+GIT_AUTOCOMMIT_ENABLED = True
+GIT_BRANCH = "main"  # cambia se usi un branch diverso
 
 # ========== UTILS NORMALIZZAZIONE ==========
 def _slug(s: str) -> str:
@@ -130,8 +127,6 @@ def _norm_text(s: str) -> str:
     return s
 
 def _canonicalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    # Mappa colonne del CSV fornito:
-    # Comune, "Ospedale di riferimento (linea d’aria, macro-area)", Indirizzo Ospedale, Telefono, Prenotazioni/CUP, Note
     mapping = {
         "comune": "comune", "citta": "comune", "comuni": "comune",
         "ospedale_di_riferimento_linea_daria_macro_area": "ospedale",
@@ -166,9 +161,9 @@ def load_contacts():
     df = _canonicalize_columns(df)
     comuni = (
         pd.Series(df["comune"].astype(str).str.strip())
-        .replace({"": np.nan}).dropna().drop_duplicates()
-        .sort_values(key=lambda s: s.str.normalize("NFKD").str.encode("ascii","ignore").str.decode("ascii").str.casefold())
-        .tolist()
+          .replace({"": np.nan}).dropna().drop_duplicates()
+          .sort_values(key=lambda s: s.str.normalize("NFKD").str.encode("ascii","ignore").str.decode("ascii").str.casefold())
+          .tolist()
     )
     return df, comuni
 
@@ -181,7 +176,6 @@ st.session_state.setdefault("last_prob", None)
 st.session_state.setdefault("last_form", None)
 st.session_state.setdefault("selected_comune", None)
 st.session_state.setdefault("sid", str(uuid4()))
-
 def go(view: str): st.session_state.view = view
 
 # ========== LOG CSV ==========
@@ -194,57 +188,67 @@ LOG_COLUMNS = [
     "comune","ospedale","telefono","indirizzo","prenotazioni","note"
 ]
 
-def _gh_headers():
-    return {
-        "Authorization": f"token {GH_TOKEN}",
-        "Accept": "application/vnd.github+json",
-    }
-
-def _gh_contents_url(path_in_repo: str) -> str:
-    return f"https://api.github.com/repos/{GH_REPO}/contents/{path_in_repo}"
-
-def push_file_to_github(local_path: Path, path_in_repo: str = GH_LOG_PATH, message: str = "Update prod_interactions.csv") -> bool:
-    """Carica/aggiorna il file su GitHub (branch GH_BRANCH). Ritorna True se ok, False altrimenti."""
-    if not GH_PUSH_ENABLED or not GH_TOKEN:
-        return False
-    if not local_path.exists():
-        return False
+def _bootstrap_log():
     try:
-        content_bytes = local_path.read_bytes()
-        content_b64 = base64.b64encode(content_bytes).decode("utf-8")
+        LOG_CSV.parent.mkdir(parents=True, exist_ok=True)
+        if not LOG_CSV.exists() or LOG_CSV.stat().st_size == 0:
+            with LOG_CSV.open("w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f); w.writerow(LOG_COLUMNS)
+    except Exception as e:
+        print("[log bootstrap]", e)
 
-        sha = None
-        r_get = requests.get(_gh_contents_url(path_in_repo), params={"ref": GH_BRANCH}, headers=_gh_headers(), timeout=15)
-        if r_get.status_code == 200:
-            sha = r_get.json().get("sha")
+_bootstrap_log()
 
-        payload = {"message": message, "content": content_b64, "branch": GH_BRANCH}
-        if sha:
-            payload["sha"] = sha
+# --- Git auto-commit/push (best-effort, silenzioso) ---
+def _run_git(cmd: list[str]) -> tuple[int, str]:
+    try:
+        p = subprocess.run(
+            cmd, cwd=str(PROJECT_ROOT),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, timeout=25
+        )
+        out = (p.stdout or "") + (p.stderr or "")
+        return p.returncode, out
+    except Exception as e:
+        return 1, f"{e}"
 
-        r_put = requests.put(_gh_contents_url(path_in_repo), headers=_gh_headers(), data=json.dumps(payload), timeout=20)
-        return 200 <= r_put.status_code < 300
+def git_auto_commit_push(file_path: Path, message: str | None = None):
+    if not GIT_AUTOCOMMIT_ENABLED:
+        return
+    try:
+        rel = str(file_path.relative_to(PROJECT_ROOT))
     except Exception:
-        return False
+        rel = str(file_path)
+
+    if message is None:
+        message = f"Auto-update {rel} — {datetime.now().isoformat(timespec='seconds')}"
+
+    # pull --rebase per evitare divergenze
+    _run_git(["git", "pull", "--rebase", "origin", GIT_BRANCH])
+    _run_git(["git", "add", rel])
+    code, out = _run_git(["git", "commit", "-m", message])
+    # se non c'è nulla da committare, esci silenziosamente
+    if code != 0 and ("nothing to commit" in out.lower() or "no changes added to commit" in out.lower()):
+        return
+    # prova il push (se fallisce, ignora)
+    _run_git(["git", "push", "origin", GIT_BRANCH])
 
 def append_log_row(row: dict):
-    """Accoda una riga a data/prod_interactions.csv (crea file se non esiste) + tenta push su GitHub."""
-    LOG_CSV.parent.mkdir(parents=True, exist_ok=True)
-    write_header = not LOG_CSV.exists() or LOG_CSV.stat().st_size == 0
-    safe = {k: row.get(k, "") for k in LOG_COLUMNS}
-    with LOG_CSV.open("a", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=LOG_COLUMNS)
-        if write_header:
-            w.writeheader()
-        w.writerow(safe)
-        # tenta push (non blocca UI)
-        try:
-            _ = push_file_to_github(LOG_CSV)
-        except Exception:
-            pass
+    try:
+        LOG_CSV.parent.mkdir(parents=True, exist_ok=True)
+        write_header = (not LOG_CSV.exists()) or (LOG_CSV.stat().st_size == 0)
+        safe = {k: row.get(k, "") for k in LOG_COLUMNS}
+        with LOG_CSV.open("a", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=LOG_COLUMNS)
+            if write_header: w.writeheader()
+            w.writerow(safe)
+    except Exception as e:
+        print("[append_log_row]", e)
+        return
+    # auto-commit & push (best-effort)
+    git_auto_commit_push(LOG_CSV)
 
 def build_form_dict(**vals) -> dict:
-    """Ritorna i campi del form con BMI calcolato."""
     bmi = vals["peso"] / max((vals["altezza_cm"]/100.0)**2, 1e-6)
     return {
         "HighBP":int(vals["highbp"]), "HighChol":int(vals["highchol"]), "CholCheck":int(vals["cholcheck"]),
@@ -336,7 +340,6 @@ def render_home():
            </div>""", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Pulsanti centrati
     st.write("")
     left, center, right = st.columns([1, 1.2, 1], gap="large")
     with center:
@@ -346,14 +349,13 @@ def render_home():
         with c2:
             st.button("📍 Vai ai contatti", use_container_width=True, on_click=lambda: go("contacts"))
 
-    # (Facoltativo) scarica log
     st.write("---")
-    st.caption(f"📄 Log CSV: {LOG_CSV.resolve()}")
-    if LOG_CSV.exists():
-        st.download_button("⬇️ Scarica log (CSV)",
-                           LOG_CSV.read_bytes(),
-                           file_name="prod_interactions.csv",
-                           mime="text/csv")
+    st.markdown(
+        '<div style="text-align:center; opacity:.85">'
+        'Creato da <b>Dicorato Martina</b> e <b>Kirollos Seif</b> — v1.0'
+        '</div>',
+        unsafe_allow_html=True
+    )
 
 # ========== CONTATTI ==========
 def show_contacts_ui():
@@ -362,7 +364,6 @@ def show_contacts_ui():
         st.warning("Contatti non trovati. Verifica il file `data/ospedali_milano_comuni_mapping.csv`.")
         return
 
-    # Ricerca
     q = st.text_input("🔎 Cerca comune", placeholder="Scrivi almeno 2 lettere…")
     if q and len(q.strip()) >= 2:
         qn = _norm_text(q)
@@ -372,9 +373,7 @@ def show_contacts_ui():
 
     st.caption(f"Risultati: {len(options)} comuni")
 
-    # "Pill" di selezione centrata
     if options:
-        # Mostra max 60 per riga, in righe multiple
         show_list = options[:60]
         rows = (len(show_list) + 5) // 6
         for r in range(rows):
@@ -387,7 +386,6 @@ def show_contacts_ui():
                     if st.button(label, key=f"pill-{label}", use_container_width=True):
                         st.session_state.selected_comune = label
 
-    # Dettagli comune selezionato
     if st.session_state.selected_comune:
         sel = st.session_state.selected_comune
         st.markdown(f"#### 📌 Contatti per **{sel}**")
@@ -417,7 +415,6 @@ def show_contacts_ui():
                 """,
                 unsafe_allow_html=True
             )
-            # Logga solo la prima riga (tipicamente un ospedale per comune)
             if i == 0:
                 log_contact_view(sel, row.to_dict())
 
@@ -437,23 +434,17 @@ def render_contacts():
 
     st.markdown("## 🗂️ Contatti ospedalieri per comune")
 
-    colA, colB = st.columns([1, 3])
-    with colA:
-        if st.button("🔄 Ricarica contatti"):
-            try:
-                st.cache_data.clear()
-            except Exception:
-                pass
-            global contacts_df, comuni_options
-            contacts_df, comuni_options = load_contacts()
-            st.success("Contatti ricaricati.")
-        if st.button("🔁 Forza sincronizzazione log su GitHub"):
-            ok = push_file_to_github(LOG_CSV)
-            st.success("Sincronizzato su GitHub ✅") if ok else st.warning("Sync fallita: controlla token/config.")
+    if st.button("🔄 Ricarica contatti"):
+        try:
+            st.cache_data.clear()
+        except Exception:
+            pass
+        global contacts_df, comuni_options
+        contacts_df, comuni_options = load_contacts()
+        st.success("Contatti ricaricati.")
 
     show_contacts_ui()
 
-    # Mappa (zoom su Milano; evidenzia selezionato)
     st.markdown("### 🗺️ Mappa (se disponibile)")
     lat_col = next((c for c in contacts_df.columns if c.lower() in ["lat","latitude","latitudine"]), None)
     lon_col = next((c for c in contacts_df.columns if c.lower() in ["lon","lng","longitude","longitudine"]), None)
@@ -556,7 +547,6 @@ def render_form():
         try:
             model, model_type, meta = load_best_model()
             X = preprocess_for_inference(rec, meta)
-            # pred + prob
             if model_type == "sklearn":
                 if hasattr(model, "predict_proba"):
                     p = model.predict_proba(X)[0]; cls = int(np.argmax(p)); prob = float(p[cls])
@@ -605,7 +595,6 @@ def render_form():
             unsafe_allow_html=True
         )
 
-    # Consiglio + tasto contatti
     if st.session_state.last_pred is not None:
         cls = int(st.session_state.last_pred)
         if cls == 0:
