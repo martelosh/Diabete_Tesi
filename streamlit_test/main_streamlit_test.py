@@ -137,12 +137,18 @@ def render_home():
         st.markdown("### 🔒 Privacy\nDati di test salvati in `data/feedback_test.csv`.")
     st.write("")
     a, b, _ = st.columns([1,1,1])
-    with a:
-        if st.button("📝 Apri Form", type="primary", use_container_width=True):
-            go("form")
-    with b:
-        if st.button("📈 Apri Monitoraggio", use_container_width=True):
-            go("monitor")
+    left, center, right = st.columns([1, 1.2, 1])  # colonna centrale leggermente più larga
+    with center:
+        b1, b2 = st.columns(2)
+        with b1:
+            go_form = st.button("📝 Apri Form", type="primary", use_container_width=True, key="home_btn_form")
+        with b2:
+            go_monitor = st.button("📈 Apri Monitoraggio", use_container_width=True, key="home_btn_monitor")
+
+    if go_form:
+        go("form")
+    if go_monitor:
+        go("monitor")
 
 
 
