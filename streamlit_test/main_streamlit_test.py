@@ -14,7 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.utils import load_best_model, predict_with_model, preprocess_for_inference  # noqa: E402
 
 # === CONFIG & STILE ===
-st.set_page_config(page_title="Rischio Diabete — Demo", page_icon="🩺", layout="wide")
+st.set_page_config(page_title="Rischio Diabete — Demo (TEST)", page_icon="🧪", layout="wide")
 st.markdown("""
 <style>
 section[data-testid="stSidebar"]{display:none}
@@ -31,6 +31,7 @@ div.block-container{padding-top:1.2rem;padding-bottom:1.2rem}
 .btn{display:inline-block; padding:.7rem 1rem; border-radius:14px; font-weight:600;
     border:1px solid rgba(0,0,0,.1); background:#fff}
 .topbar{display:flex; gap:.5rem; margin-bottom:.5rem}
+.badge{display:inline-block;padding:.25rem .6rem;border-radius:999px;border:1px solid rgba(0,0,0,.1);font-size:.8rem;background:#fff}
 </style>
 """, unsafe_allow_html=True)
 
@@ -61,9 +62,9 @@ def render_home():
     st.markdown(
         """
         <div class="hero">
-          <h1>🩺 Valutazione del Rischio Diabete (demo)</h1>
+          <h1>🧪 Rischio Diabete (TEST)</h1>
           <p class="small">
-            Inserisci poche informazioni, ottieni la <b>classe 0/1/2</b> e salva un feedback per il miglioramento.
+            Ambiente di prova. Predizione (classe 0/1/2) e feedback per il retraining. Include strumenti di debug.
           </p>
         </div>
         """,
@@ -71,18 +72,22 @@ def render_home():
     )
     st.write("")
     c1, c2, c3 = st.columns(3)
-    with c1: st.markdown("### 🎯 Obiettivo\n- Predizione rapida\n- Feedback per retrain\n- Report automatici")
+    with c1:
+        st.markdown("### 🎯 Obiettivo\n- Iterare rapidamente\n- Validare flussi\n- Generare feedback")
     with c2:
         st.markdown("### 📦 Modello")
         try:
             _, model_type, meta = load_best_model()
-            sk = meta.get("sklearn_score"); ke = meta.get("keras_score")
             st.markdown(f"In uso: **{model_type}**")
+            sk = meta.get("sklearn_score"); ke = meta.get("keras_score")
             st.caption(f"Sklearn CV: {sk:.4f}" if sk is not None else "Sklearn CV: n/d")
             st.caption(f"Keras Val: {ke:.4f}" if ke is not None else "Keras Val: n/d")
         except Exception as e:
             st.warning(f"Modello non caricato: {e}")
-    with c3: st.markdown("### 🔒 Privacy\nDati di test salvati in `data/training_feedback.csv`.")
+    with c3:
+        st.markdown("### 🔒 Privacy\nDati di test salvati in `data/training_feedback.csv`.")
+        st.caption("⚠️ Uso interno, non per diagnosi clinica.")
+
     st.write("")
     a, b, _ = st.columns([1,1,1])
     with a:
@@ -96,7 +101,7 @@ def render_form():
     if st.button("⬅️ Home"): go("home"); st.stop()
     st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown("## 📝 Form di autovalutazione")
+    st.markdown("## 📝 Form di autovalutazione (TEST)")
     try:
         model, model_type, meta = load_best_model()
         st.caption(f"Selezione automatica → usando: **{model_type}**")
@@ -164,6 +169,24 @@ def render_form():
         st.success(f"Predizione: **{pred_class}**  (0=No, 1=Pre, 2=Diabete)")
         st.info("Conferma il feedback e poi salva.")
 
+    # Sezione DEBUG opzionale
+    with st.expander("🔍 Debug (TEST)"):
+        try:
+            _, model_type, meta = load_best_model()
+            st.write("**Model type:**", model_type)
+            st.write("**Meta:**", meta)
+        except Exception as e:
+            st.write("Model non caricato:", e)
+        if st.session_state.get("pending_record") is not None:
+            st.write("**Input record:**")
+            st.dataframe(st.session_state["pending_record"], use_container_width=True)
+            try:
+                X_dbg = preprocess_for_inference(st.session_state["pending_record"], meta)
+                st.write("**X preprocessato (per inferenza):**")
+                st.dataframe(X_dbg, use_container_width=True)
+            except Exception as e:
+                st.write("Errore preprocess debug:", e)
+
     if st.session_state.get("pending_record") is not None:
         pred_class = st.session_state.get("pending_pred_class", 0)
         fb = st.radio("Questo risultato è corretto?", ["Sì", "No"], horizontal=True, index=0)
@@ -189,9 +212,8 @@ def render_form():
                 st.session_state[k] = None
             st.success("✅ Salvato in data/training_feedback.csv.")
 
-# === REPORT INLINE (semplice e affidabile) ===
+# === REPORT INLINE (come tua versione originale) ===
 def _build_reports_inline():
-    """Genera weekly/by_model/confusion partendo *sempre* da FEEDBACK."""
     if not FEEDBACK.exists():
         return False, f"Non trovo {FEEDBACK}. Fai almeno un invio dal Form."
     df = pd.read_csv(FEEDBACK)
@@ -204,7 +226,7 @@ def _build_reports_inline():
 
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Weekly (settimana = inizio lunedì)
+    # Weekly (settimana = lunedì)
     if "timestamp" in df.columns and df["timestamp"].notna().any():
         weekly = (
             df.assign(week_start=df["timestamp"].dt.to_period("W-MON").apply(lambda p: p.start_time))
@@ -242,17 +264,14 @@ def render_monitor():
     by_model_path = METRICS_DIR / "by_model_report.csv"
     cm_path = METRICS_DIR / "confusion_matrix_overall.csv"
 
-    # se i file non esistono ancora, creali adesso
     if not (weekly_path.exists() or by_model_path.exists() or cm_path.exists()):
         ok, msg = _build_reports_inline()
         (st.success if ok else st.warning)(msg)
 
-    # bottone aggiorna (rigenera sempre dai feedback)
     if st.button("🔄 Aggiorna report"):
         ok, msg = _build_reports_inline()
         (st.success if ok else st.warning)(msg)
 
-    # UI
     if weekly_path.exists():
         weekly = pd.read_csv(weekly_path, parse_dates=["week_start"])
         st.subheader("Andamento settimanale")

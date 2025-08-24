@@ -17,12 +17,9 @@ from src.utils import load_best_model, preprocess_for_inference  # noqa: E402
 st.set_page_config(page_title="Valutazione Rischio Diabete", page_icon="🩺", layout="wide")
 st.markdown("""
 <style>
-/* Layout pulito */
 section[data-testid="stSidebar"]{display:none}
 header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
 div.block-container{padding:2rem 0}
-
-/* Hero */
 .hero{
   border-radius:28px;padding:clamp(1.6rem,2.5vw,2.6rem);
   border:1px solid rgba(0,0,0,.06);
@@ -33,20 +30,14 @@ div.block-container{padding:2rem 0}
   box-shadow:0 14px 44px rgba(0,0,0,.08);
 }
 .hero h1{margin:0 0 .5rem}
-
-/* Cards */
 .card{
   border:1px solid rgba(0,0,0,.08); background:#fff;
   border-radius:18px; box-shadow:0 8px 22px rgba(0,0,0,.06);
   padding:1rem 1.2rem; margin-bottom:.8rem;
 }
 .badge{display:inline-block;padding:.25rem .6rem;border-radius:999px;border:1px solid rgba(0,0,0,.1);font-size:.8rem;background:#fff}
-
-/* Buttons */
 .stButton>button[kind="primary"]{border-radius:14px;font-weight:700;padding:.7rem 1rem;box-shadow:0 10px 24px rgba(0,0,0,.10)}
 .stButton>button{border-radius:12px;font-weight:600}
-
-/* Dark mode */
 @media (prefers-color-scheme: dark){
   .hero{border-color:rgba(255,255,255,.08);background:linear-gradient(180deg,#0f1117,#0f121a);color:#e9e9ea}
   .card{background:#101318;color:#e9e9ea;border-color:rgba(255,255,255,.08)}
@@ -62,9 +53,7 @@ def load_contacts():
     if not CONTACTS_CSV.exists():
         return pd.DataFrame(), []
     df = pd.read_csv(CONTACTS_CSV)
-    # normalizza nomi colonne in minuscolo
     df.columns = [c.lower() for c in df.columns]
-    # mappa alcune varianti comuni
     rename_map = {"città":"comune", "citta":"comune", "comuni":"comune"}
     df = df.rename(columns={k:v for k,v in rename_map.items() if k in df.columns})
     comuni = sorted(df["comune"].dropna().astype(str).unique()) if "comune" in df.columns else []
@@ -93,12 +82,49 @@ def predict_with_proba(model, model_type: str, X: pd.DataFrame):
         return int(model.predict(X)[0]), 0.50
     p = model.predict(X, verbose=0)[0]; c = int(np.argmax(p)); return c, float(p[c])
 
+# ========== POPUP RACCOMANDAZIONI ==========
+def show_recommendation_popup(cls: int, prob: float):
+    title = "Consiglio medico"
+    msg = ""
+    if cls == 2:
+        msg = ("La valutazione indica **rischio compatibile con diabete**.\n\n"
+               "👉 Ti consigliamo di **contattare il tuo medico di base** o una **struttura ospedaliera** per una visita approfondita.")
+    elif cls == 1 and prob >= 0.65:
+        msg = ("La valutazione indica **condizione pre-diabetica** con probabilità **elevata**.\n\n"
+               "👉 È opportuno **prenotare un controllo** e monitorare dieta e attività fisica.")
+    elif cls == 1:
+        msg = ("La valutazione indica **condizione pre-diabetica**.\n\n"
+               "👉 Consigliamo **stile di vita sano** e un **controllo medico** non urgente.")
+    else:
+        msg = ("La valutazione indica **basso rischio**.\n\n"
+               "👉 Mantieni uno stile di vita equilibrato e considera **controlli periodici**.")
+
+    # Modal (Streamlit 1.32+). Fallback su info se non disponibile.
+    try:
+        dlg = getattr(st, "experimental_dialog", None) or getattr(st, "dialog", None)
+        if dlg:
+            @dlg(title)
+            def _popup():
+                st.write(msg)
+                if st.session_state.selected_comune and not contacts_df.empty:
+                    sub = contacts_df[contacts_df["comune"].astype(str).str.lower() ==
+                                      st.session_state.selected_comune.lower()]
+                    if not sub.empty:
+                        st.write("**Contatti vicini a te:**")
+                        st.dataframe(sub[["struttura","indirizzo","telefono"]], use_container_width=True)
+                st.button("Chiudi")
+            _popup()
+        else:
+            st.info(msg)
+    except Exception:
+        st.info(msg)
+
 # ========== HOME ==========
 def render_home():
     st.markdown(
         """<div class="hero">
            <h1>🩺 Valutazione del Rischio Diabete</h1>
-           <p class="small">Compila il form: ottieni la <b>classe (0/1/2)</b> e la <b>probabilità</b>. Poi scegli il tuo <b>comune</b> per vedere i contatti utili.</p>
+           <p class="small">Compila il form: ottieni la <b>classe (0/1/2)</b> e la <b>probabilità</b>. Poi scegli il tuo <b>comune</b> per contatti utili.</p>
            </div>""",
         unsafe_allow_html=True,
     )
@@ -158,10 +184,14 @@ def render_form():
 
         st.session_state.last_pred = cls
         st.session_state.last_prob = prob
+
         st.success(f"Risultato: **{cls}**  (0=No, 1=Pre, 2=Diabete)")
         st.info(f"Probabilità della classe predetta: **{prob*100:.1f}%**")
 
-    # — Sezione contatti (sempre visibile dopo il calcolo; altrimenti disabilitata)
+        # Mostra popup raccomandazioni contestuali
+        show_recommendation_popup(cls, prob)
+
+    # — Sezione contatti (post-calcolo)
     st.write("---")
     st.subheader("📍 Prenota vicino a te")
     if contacts_df.empty or not comuni_options:
@@ -170,7 +200,6 @@ def render_form():
 
     disable_select = st.session_state.last_pred is None
     placeholder = "Cerca il tuo comune…" if not disable_select else "Prima calcola il risultato"
-    # selectbox ha la ricerca integrata
     selected = st.selectbox("Seleziona il comune", comuni_options, index=None, placeholder=placeholder, disabled=disable_select)
     if selected:
         st.session_state.selected_comune = selected
@@ -181,7 +210,6 @@ def render_form():
             st.info("Nessun contatto trovato per il comune selezionato.")
             return
 
-        # mostra come card carine
         st.markdown("#### Strutture e contatti")
         for _, row in sub.iterrows():
             struttura = str(row.get("struttura", "Struttura")).strip()
@@ -203,7 +231,6 @@ def render_form():
                 unsafe_allow_html=True
             )
 
-        # scarica CSV filtrato
         csv_bytes = sub.to_csv(index=False).encode("utf-8")
         st.download_button("⬇️ Scarica contatti (CSV)", csv_bytes, file_name=f"contatti_{st.session_state.selected_comune}.csv")
 
