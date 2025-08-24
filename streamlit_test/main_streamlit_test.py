@@ -19,7 +19,7 @@ st.set_page_config(page_title="Rischio Diabete — TEST", page_icon="🧪", layo
 
 # ==== PATH DATI ====
 DATA_DIR = PROJECT_ROOT / "data"
-FEEDBACK = DATA_DIR / "feedback_test.csv"
+FEEDBACK = DATA_DIR / "feedback_test.csv"   # <— nuovo file (prima: training_feedback.csv)
 METRICS_DIR = DATA_DIR / "metrics"
 
 # -----------------------------------------------------------------------------
@@ -28,7 +28,7 @@ METRICS_DIR = DATA_DIR / "metrics"
 if "nav" not in st.session_state:
     st.session_state.nav = "🏠 Home"
 
-# 👇 Gestisce eventuali redirect PRIMA di istanziare la radio
+# Gestisce eventuali redirect (dai bottoni) PRIMA di istanziare la radio
 if st.session_state.get("go_to"):
     st.session_state.nav = st.session_state.pop("go_to")
 
@@ -50,11 +50,11 @@ def page_home():
     with c1:
         if st.button("👉 Vai al form", use_container_width=True, type="primary"):
             st.session_state["go_to"] = "📝 Compila form"
-            st.experimental_rerun()
+            st.rerun()  # <— compatibilità: era st.experimental_rerun
     with c2:
         if st.button("📊 Vai al monitoraggio", use_container_width=True):
             st.session_state["go_to"] = "📊 Monitoraggio"
-            st.experimental_rerun()
+            st.rerun()  # <— compatibilità
 
     st.write("---")
     st.subheader("Come funziona")
