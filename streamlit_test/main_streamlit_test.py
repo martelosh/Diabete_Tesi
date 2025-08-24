@@ -21,7 +21,7 @@ st.markdown("""
 <style>
 section[data-testid="stSidebar"]{display:none}
 header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
-div.block-container{padding-top:1.2rem;padding-bottom:1.2rem}
+div.block-container{padding-top:3rem;padding-bottom:2rem}
 .hero{
   background: radial-gradient(1200px 600px at 8% 10%, rgba(0,120,255,.08), transparent 60%),
               radial-gradient(1000px 500px at 90% 30%, rgba(255,60,140,.08), transparent 60%);
