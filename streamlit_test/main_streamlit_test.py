@@ -2,6 +2,8 @@
 import sys
 from pathlib import Path
 from datetime import datetime, timezone
+import os
+import subprocess
 
 import pandas as pd
 import streamlit as st
@@ -37,6 +39,33 @@ div.block-container{padding-top:1.2rem;padding-bottom:1.2rem}
 DATA_DIR = PROJECT_ROOT / "data"
 METRICS_DIR = DATA_DIR / "metrics"
 FEEDBACK = DATA_DIR / "feedback_test.csv"   # <<< unico cambio di percorso
+
+def _auto_git_sync(file_paths, commit_msg="Auto: update feedback_test.csv"):
+    """
+    Aggiunge/committa/pusha automaticamente i file passati.
+    Richiede che le credenziali Git siano già configurate (vedi sotto).
+    """
+    try:
+        repo_root = PROJECT_ROOT  # radice repo
+        # Normalizza i path in relativi alla repo (Git preferisce così)
+        rels = [str(Path(p).resolve().relative_to(repo_root)) for p in file_paths]
+
+        # Sequenza classica: add -> commit -> pull --rebase -> push
+        cmds = [
+            ["git", "add"] + rels,
+            ["git", "commit", "-m", commit_msg],
+            ["git", "pull", "--rebase", "origin", "main"],
+            ["git", "push", "origin", "main"],
+        ]
+        for cmd in cmds:
+            subprocess.run(cmd, cwd=repo_root, check=True, capture_output=True)
+        st.toast("📤 Sincronizzato su GitHub.", icon="✅")
+    except subprocess.CalledProcessError as e:
+        # Mostra errore ma NON blocca il salvataggio locale
+        msg = (e.stderr or e.stdout or b"").decode(errors="ignore")
+        st.toast("⚠️ Sync Git fallita (dati salvati solo in locale).", icon="⚠️")
+        st.caption(f"Dettagli Git: {msg.strip()[:400]}")
+
 
 # === ROUTER STATO ===
 st.session_state.setdefault("view", "home")
@@ -184,6 +213,8 @@ def render_form():
             else:
                 df_new = out
             df_new.to_csv(FEEDBACK, index=False)
+
+            _auto_git_sync([FEEDBACK])
 
             for k in ["pending_record","pending_model_type","pending_model_artifact","pending_pred_class"]:
                 st.session_state[k] = None
