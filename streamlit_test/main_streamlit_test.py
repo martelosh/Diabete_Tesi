@@ -149,33 +149,36 @@ def render_home():
         go("form")
     if go_monitor:
         go("monitor")
-        # --- Grafico a torta: distribuzione target (dataset di origine) ---
-    data_csv = DATA_DIR / "diabete_data.csv"
+    # --- Mini grafico attività (ultimi 30 giorni) ---
     try:
-        if data_csv.exists():
-            df0 = pd.read_csv(data_csv)
-            target_col = "Diabetes_012" if "Diabetes_012" in df0.columns else None
-            if target_col:
-                counts = df0[target_col].value_counts().reindex([0, 1, 2], fill_value=0)
-                total = counts.sum()
-                if total > 0:
-                    import matplotlib.pyplot as plt
-                    fig, ax = plt.subplots()
-                    ax.pie(
-                        counts, labels=["0", "1", "2"],
-                        autopct=lambda p: f"{p:.1f}%", startangle=90
+        if FEEDBACK.exists():
+            dfh = pd.read_csv(FEEDBACK)
+            if not dfh.empty and "timestamp" in dfh.columns:
+                t = pd.to_datetime(dfh["timestamp"], utc=True, errors="coerce").dropna()
+                if not t.empty:
+                    # conteggio per giorno (UTC) e reindex sugli ultimi 30 giorni
+                    daily = (
+                        t.dt.floor("D")
+                         .value_counts()
+                         .rename_axis("day")
+                         .sort_index()
+                         .rename("invii")
                     )
-                    ax.axis("equal")  # cerchio perfetto
-                    st.markdown("#### 🥧 Distribuzione classi nel dataset di origine")
-                    st.pyplot(fig)
-                else:
-                    st.caption("Il dataset di origine non ha righe.")
+                    idx = pd.date_range(
+                        end=pd.Timestamp.now(tz="UTC").normalize(),
+                        periods=30, freq="D", tz="UTC"
+                    )
+                    daily = daily.reindex(idx, fill_value=0)
+
+                    st.markdown("#### 📈 Attività recente (ultimi 30 giorni)")
+                    st.line_chart(daily)
             else:
-                st.caption("Non trovo la colonna target 'Diabetes_012' nel dataset di origine.")
+                st.caption("Nessun dato attività ancora — compila il form per vedere il grafico.")
         else:
-            st.caption("Il dataset di origine 'data/diabete_data.csv' non è presente.")
+            st.caption("Il file di feedback non esiste ancora.")
     except Exception as e:
-        st.caption(f"Grafico a torta non disponibile: {e}")
+        st.caption(f"Grafico attività non disponibile: {e}")
+
 
 
 
