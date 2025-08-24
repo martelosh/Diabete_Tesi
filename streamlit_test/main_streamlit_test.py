@@ -22,38 +22,12 @@ st.markdown("""
 section[data-testid="stSidebar"]{display:none}
 header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
 
-div.block-container{padding-top:3rem;padding-bottom:2rem}
+/* solo un pochino più in basso rispetto a 1.2rem */
+div.block-container{padding-top:2rem;padding-bottom:1.6rem}
 
-.hero{
-  background: radial-gradient(1200px 600px at 8% 10%, rgba(0,120,255,.08), transparent 60%),
-              radial-gradient(1000px 500px at 90% 30%, rgba(255,60,140,.08), transparent 60%);
-  border:1px solid rgba(0,0,0,.06); border-radius:24px; padding:2rem;
-  box-shadow:0 10px 30px rgba(0,0,0,.06);
-}
-.card{
-  border:1px solid rgba(0,0,0,.06); border-radius:18px; padding:1rem; background:#fff;
-  box-shadow:0 6px 16px rgba(0,0,0,.05)
-}
-.btn{
-  display:inline-block; padding:.7rem 1rem; border-radius:14px; font-weight:600;
-  border:1px solid rgba(0,0,0,.1); background:#fff
-}
-.topbar{display:flex; gap:.5rem; margin-bottom:.5rem}
-
-/* HOME centrata un po’ più in basso */
-.home-shell{
-  min-height:55vh;                 /* non a metà, ma più bassa del top */
-  display:flex; flex-direction:column; justify-content:flex-start;
-  padding-top:5vh;                 /* alza/abbassa di poco cambiando questo */
-}
-.home-shell .hero{ margin-bottom:1.5rem; }
-
-/* Pulsanti centrati come gruppo */
-.btn-row-center{
-  max-width:520px;
-  margin:.5rem auto 0;
-}
+/* (lascia pure .hero, .card, .btn, .topbar se già presenti) */
 </style>
+
 
 """, unsafe_allow_html=True)
 
@@ -108,9 +82,6 @@ def _build_record(**vals) -> pd.DataFrame:
 
 # === HOME ===
 def render_home():
-    # wrapper per centrare verticalmente in modo leggero
-    st.markdown('<div class="home-shell">', unsafe_allow_html=True)
-
     st.markdown(
         """
         <div class="hero">
@@ -122,7 +93,7 @@ def render_home():
         """,
         unsafe_allow_html=True,
     )
-
+    st.write("")
     c1, c2, c3 = st.columns(3)
     with c1:
         st.markdown("### 🎯 Obiettivo\n- Predizione rapida\n- Feedback per retrain\n- Report automatici")
@@ -130,8 +101,7 @@ def render_home():
         st.markdown("### 📦 Modello")
         try:
             _, model_type, meta = load_best_model()
-            sk = meta.get("sklearn_score")
-            ke = meta.get("keras_score")
+            sk = meta.get("sklearn_score"); ke = meta.get("keras_score")
             st.markdown(f"In uso: **{model_type}**")
             st.caption(f"Sklearn CV: {sk:.4f}" if sk is not None else "Sklearn CV: n/d")
             st.caption(f"Keras Val: {ke:.4f}" if ke is not None else "Keras Val: n/d")
@@ -139,24 +109,15 @@ def render_home():
             st.warning(f"Modello non caricato: {e}")
     with c3:
         st.markdown("### 🔒 Privacy\nDati di test salvati in `data/feedback_test.csv`.")
+    st.write("")
+    a, b, _ = st.columns([1,1,1])
+    with a:
+        if st.button("📝 Apri Form", type="primary", use_container_width=True):
+            go("form")
+    with b:
+        if st.button("📈 Apri Monitoraggio", use_container_width=True):
+            go("monitor")
 
-    # gruppo pulsanti centrato
-    st.markdown('<div class="btn-row-center">', unsafe_allow_html=True)
-    left, center, right = st.columns([1, 1.2, 1])
-    with center:
-        bcol1, bcol2 = st.columns(2)
-        with bcol1:
-            go_form = st.button("📝 Apri Form", type="primary", use_container_width=True, key="home_btn_form")
-        with bcol2:
-            go_monitor = st.button("📈 Apri Monitoraggio", use_container_width=True, key="home_btn_monitor")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    if go_form:
-        go("form")
-    if go_monitor:
-        go("monitor")
-
-    st.markdown('</div>', unsafe_allow_html=True)  # chiude .home-shell
 
 
 
