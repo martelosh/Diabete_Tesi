@@ -17,10 +17,26 @@ from src.utils import load_best_model, predict_with_model, preprocess_for_infere
 # ==== CONFIG APP ====
 st.set_page_config(page_title="Rischio Diabete — TEST", page_icon="🧪", layout="wide")
 
-# ==== FILE FEEDBACK (SEMPLICE E UNICO) ====
-DATA_DIR = PROJECT_ROOT / "data"
-FEEDBACK = DATA_DIR / "training_feedback.csv"
+# ==== FILE FEEDBACK (centralizzato via .env) ====
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # carica variabili da .env (se esiste nella root)
+
+FEEDBACK_ENV = os.getenv("FEEDBACK_PATH")
+
+if FEEDBACK_ENV:
+    FEEDBACK = Path(FEEDBACK_ENV).expanduser().resolve()
+    DATA_DIR = FEEDBACK.parent
+else:
+    DATA_DIR = PROJECT_ROOT / "data"
+    FEEDBACK = (DATA_DIR / "training_feedback.csv").resolve()
+
 METRICS_DIR = DATA_DIR / "metrics"
+
+st.caption(f"📂 Feedback path usato: {FEEDBACK}")
+st.caption(f"📁 Metrics dir: {METRICS_DIR}")
+
 
 st.caption(f"📂 Feedback path (assoluto): {FEEDBACK.resolve()}")
 st.caption(f"📌 Working dir dell'app: {Path.cwd()}")
