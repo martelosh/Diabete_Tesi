@@ -149,6 +149,34 @@ def render_home():
         go("form")
     if go_monitor:
         go("monitor")
+        # --- Grafico a torta: distribuzione target (dataset di origine) ---
+    data_csv = DATA_DIR / "diabete_data.csv"
+    try:
+        if data_csv.exists():
+            df0 = pd.read_csv(data_csv)
+            target_col = "Diabetes_012" if "Diabetes_012" in df0.columns else None
+            if target_col:
+                counts = df0[target_col].value_counts().reindex([0, 1, 2], fill_value=0)
+                total = counts.sum()
+                if total > 0:
+                    import matplotlib.pyplot as plt
+                    fig, ax = plt.subplots()
+                    ax.pie(
+                        counts, labels=["0", "1", "2"],
+                        autopct=lambda p: f"{p:.1f}%", startangle=90
+                    )
+                    ax.axis("equal")  # cerchio perfetto
+                    st.markdown("#### 🥧 Distribuzione classi nel dataset di origine")
+                    st.pyplot(fig)
+                else:
+                    st.caption("Il dataset di origine non ha righe.")
+            else:
+                st.caption("Non trovo la colonna target 'Diabetes_012' nel dataset di origine.")
+        else:
+            st.caption("Il dataset di origine 'data/diabete_data.csv' non è presente.")
+    except Exception as e:
+        st.caption(f"Grafico a torta non disponibile: {e}")
+
 
 
 
