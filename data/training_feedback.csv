@@ -13,3 +13,8 @@ HighBP,HighChol,CholCheck,BMI,Smoker,Stroke,HeartDiseaseorAttack,PhysActivity,Fr
 0,0,0,51.9,0,0,0,0,0,0,0,0,0,3,2,2,0,0,40,4,4,0,0,2025-08-24T15:47:05.696170+00:00,sklearn,LightGBM_optimized_model.pkl
 0,0,0,24.2,0,0,0,0,0,0,0,0,0,3,2,2,0,0,40,4,4,0,0,2025-08-24T15:52:25.391940+00:00,sklearn,LightGBM_optimized_model.pkl
 0,0,0,24.2,0,0,0,0,0,0,0,0,0,3,2,2,0,0,40,4,4,0,0,2025-08-24T16:00:42.995468+00:00,sklearn,LightGBM_optimized_model.pkl
+0,0,1,51.9,1,1,1,0,0,0,0,0,0,3,16,10,0,0,40,4,4,0,0,2025-08-24T16:47:30.064842+00:00,sklearn,LightGBM_optimized_model.pkl
+0,0,0,24.2,0,0,0,0,0,0,0,0,0,3,2,2,0,0,40,4,4,0,0,2025-08-24T16:49:11.561756+00:00,sklearn,LightGBM_optimized_model.pkl
+0,0,0,24.2,0,0,0,0,0,0,0,0,0,3,2,2,0,0,40,4,4,0,0,2025-08-24T16:54:28.596736+00:00,sklearn,LightGBM_optimized_model.pkl
+0,0,0,24.2,0,0,0,0,0,0,0,0,0,3,2,2,0,0,40,4,4,0,0,2025-08-24T17:02:28.545108+00:00,sklearn,LightGBM_optimized_model.pkl
+0,0,0,24.2,0,0,0,0,0,0,0,0,0,3,2,2,0,0,40,4,4,0,0,2025-08-24T17:06:10.265912+00:00,sklearn,LightGBM_optimized_model.pkl
