@@ -33,6 +33,13 @@ div.block-container{padding-top:3rem;padding-bottom:2rem}
 .btn{display:inline-block; padding:.7rem 1rem; border-radius:14px; font-weight:600;
     border:1px solid rgba(0,0,0,.1); background:#fff}
 .topbar{display:flex; gap:.5rem; margin-bottom:.5rem}
+.home-shell{
+  min-height:70vh;            /* occupa il 70% dell’altezza viewport */
+  display:flex;
+  flex-direction:column;
+  justify-content:center;     /* centra verticalmente il contenuto */
+}
+.home-shell .hero{ margin-bottom:1.5rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -87,6 +94,8 @@ def _build_record(**vals) -> pd.DataFrame:
 
 # === HOME ===
 def render_home():
+    st.markdown('<div class="home-shell">', unsafe_allow_html=True)
+
     st.markdown(
         """
         <div class="hero">
@@ -98,9 +107,10 @@ def render_home():
         """,
         unsafe_allow_html=True,
     )
-    st.write("")
+
     c1, c2, c3 = st.columns(3)
-    with c1: st.markdown("### 🎯 Obiettivo\n- Predizione rapida\n- Feedback per retrain\n- Report automatici")
+    with c1:
+        st.markdown("### 🎯 Obiettivo\n- Predizione rapida\n- Feedback per retrain\n- Report automatici")
     with c2:
         st.markdown("### 📦 Modello")
         try:
@@ -111,13 +121,20 @@ def render_home():
             st.caption(f"Keras Val: {ke:.4f}" if ke is not None else "Keras Val: n/d")
         except Exception as e:
             st.warning(f"Modello non caricato: {e}")
-    with c3: st.markdown("### 🔒 Privacy\nDati di test salvati in `data/feedback_test.csv`.")  # testo aggiornato
+    with c3:
+        st.markdown("### 🔒 Privacy\nDati di test salvati in `data/feedback_test.csv`.")
+
     st.write("")
     a, b, _ = st.columns([1,1,1])
     with a:
-        if st.button("📝 Apri Form", type="primary", use_container_width=True): go("form")
+        if st.button("📝 Apri Form", type="primary", use_container_width=True):
+            go("form")
     with b:
-        if st.button("📈 Apri Monitoraggio", use_container_width=True): go("monitor")
+        if st.button("📈 Apri Monitoraggio", use_container_width=True):
+            go("monitor")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
 # === FORM (con feedback) ===
 def render_form():
