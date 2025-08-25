@@ -1,27 +1,27 @@
 from __future__ import annotations
-import os
-from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
+import os
+from pathlib import Path
 import numpy as np
 
-# PDF -> testo e indicizzazione
+# PDF -> testo
 try:
     from pypdf import PdfReader  # pip install pypdf
 except Exception:
     from PyPDF2 import PdfReader  # fallback
 
-from sklearn.feature_extraction.text import TfidfVectorizer  # scikit-learn già nel progetto
+# TF-IDF per il retrieval
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# chatbot.py (testa del file)
-import os
-from pathlib import Path
+# === DeepSeek client (legge la chiave dal .env) ===
 from dotenv import load_dotenv
 from openai import OpenAI
 
-ROOT = Path(__file__).resolve().parents[1]  # cartella progetto
-load_dotenv(ROOT / ".env")                  # carica .env dalla root del repo
+# Root del progetto (cartella repo)
+ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(ROOT / ".env")
 
 API_KEY  = os.getenv("DEEPSEEK_API_KEY")
 BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
@@ -32,16 +32,11 @@ if not API_KEY:
 
 client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
 
-
-# === PATHS ===
-PROJECT_ROOT = Path(__file__).resolve().parent
-DATA_DIR = PROJECT_ROOT / "data"
+# === Percorsi ===
+DATA_DIR = ROOT / "data"
 PDF_PATH = DATA_DIR / "CS-PANORAMA-DIABETE-LANCIO-DEF.pdf"
 
-# === CLIENT ===
-_client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
-
-# === INDICE PDF (TF-IDF) ===
+# === Indice TF-IDF del PDF ===
 _vectorizer: Optional[TfidfVectorizer] = None
 _doc_matrix = None
 _chunks: List[str] = []
@@ -51,7 +46,7 @@ def _pdf_to_text(pdf_path: Path) -> str:
         return ""
     reader = PdfReader(str(pdf_path))
     pages = []
-    for i, page in enumerate(reader.pages):
+    for page in reader.pages:
         try:
             pages.append(page.extract_text() or "")
         except Exception:
@@ -61,23 +56,18 @@ def _pdf_to_text(pdf_path: Path) -> str:
 def _chunk_text(text: str, max_chars: int = 900, overlap: int = 150) -> List[str]:
     text = text.replace("\r", " ").replace("\t", " ")
     words = text.split()
-    chunks = []
-    cur = []
-    cur_len = 0
+    chunks, cur, cur_len = [], [], 0
     for w in words:
-        cur.append(w)
-        cur_len += len(w) + 1
+        cur.append(w); cur_len += len(w) + 1
         if cur_len >= max_chars:
-            chunks.append(" ".join(cur))
-            # overlap
-            back = " ".join(cur)[-overlap:]
-            cur = [back]
-            cur_len = len(back)
+            whole = " ".join(cur)
+            chunks.append(whole)
+            # overlap “grezzo” (va bene per un TF-IDF veloce)
+            back = whole[-overlap:]
+            cur = [back]; cur_len = len(back)
     if cur:
         chunks.append(" ".join(cur))
-    # filtra chunk troppo corti o vuoti
-    chunks = [c.strip() for c in chunks if len(c.strip()) > 30]
-    return chunks
+    return [c.strip() for c in chunks if len(c.strip()) > 30]
 
 def build_pdf_index(force: bool = False) -> Tuple[bool, str]:
     """Costruisce (o ricostruisce) l'indice TF-IDF del PDF."""
@@ -95,8 +85,8 @@ def build_pdf_index(force: bool = False) -> Tuple[bool, str]:
         _vectorizer, _doc_matrix = None, None
         return False, "Nessun contenuto indicizzabile nel PDF."
 
-    # lingua italiana -> stopwords italiane se disponibile
-    _vectorizer = TfidfVectorizer(stop_words="italian")
+    # Nota: scikit-learn supporta 'english' come stop_words stringa. Per italiano usa None o una lista personalizzata.
+    _vectorizer = TfidfVectorizer(stop_words=None)
     _doc_matrix = _vectorizer.fit_transform(_chunks)
     return True, f"Indicizzate {len(_chunks)} sezioni dal PDF."
 
@@ -112,7 +102,7 @@ def _retrieve(query: str, k: int = 4) -> List[str]:
     return [_chunks[i] for i in idx if sims[i] > 0.01]
 
 def _deepseek_chat(messages: List[Dict[str, str]], temperature: float = 0.6, max_tokens: int = 600) -> str:
-    resp = _client.chat.completions.create(
+    resp = client.chat.completions.create(
         model=MODEL,
         messages=messages,
         temperature=temperature,
@@ -121,7 +111,7 @@ def _deepseek_chat(messages: List[Dict[str, str]], temperature: float = 0.6, max
     )
     return resp.choices[0].message.content
 
-# === API PUBBLICA ===
+# === API pubblica: risposta con RAG sul PDF + FAQ del sito ===
 def answer_with_rag(user_question: str, site_faq: str = "") -> str:
     """
     - Recupera i migliori estratti dal PDF e li passa come contesto.
@@ -146,5 +136,5 @@ def answer_with_rag(user_question: str, site_faq: str = "") -> str:
     except Exception as e:
         return f"⚠️ Errore nel contattare il modello: {e}"
 
-# costruisci l'indice una volta all'import
+# Costruisce l’indice al primo import
 build_pdf_index(force=True)
