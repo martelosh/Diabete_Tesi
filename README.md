@@ -1,236 +1,152 @@
-# 🔎 Valutazione Rischio Diabete
+# 🩺 Progetto Diabete — Prevenzione e Supporto con ML e Streamlit
 
-**Autori:** Dicorato Martina, Kirollos Seif  
-**Versione:** 1.0  
+## 📌 Descrizione
+Questo progetto implementa una piattaforma per la **pre-valutazione del rischio diabete** basata su:
+- Un **modello di Machine Learning** (classi 0/1/2 → rischio basso/medio/alto).
+- Due applicazioni **Streamlit**:
+  - **Produzione**: form di predizione, rubrica contatti/mappa strutture sanitarie, chatbot informativo.
+  - **Test/Monitor**: raccolta feedback, reportistica e metriche.
+- Un **database cloud (AlwaysData)** per centralizzare i log.
+- Un **chatbot** basato su **OpenAI API** con supporto RAG opzionale.
 
-> ⚠️ **Nota medica**: questo strumento ha scopi **informativi/educativi** e **non sostituisce un consulto medico**.
-
----
-
-## ✨ Cosa fa
-
-- Modello ML per classificare il rischio diabete (classi `0/1/2`).
-- Due interfacce **Streamlit**:
-  - **Test (`streamlit_test/`)**: flusso completo con salvataggio feedback e monitoraggio.
-  - **Produzione (`streamlit_prod/`)**: UI curata, mostra probabilità della classe, contatti ospedali per comune (mappa), log interazioni per analisi.
-- Dati e report salvati in `data/` (CSV + metriche).
-- Notebook per analisi rapida dei dati di produzione.
+⚠️ **Disclaimer**: lo strumento è solo di supporto e **non sostituisce la diagnosi medica**.
 
 ---
 
-## 🗂️ Struttura della repository
-
-.
-├─ data/
-│ ├─ diabete_data.csv # dataset di origine
-│ ├─ ospedali_milano_comuni_mapping.csv # mappa COMUNE → ospedale/contatti (anche lat/lon)
-│ ├─ feedback_test.csv # feedback app Test (si crea/scrive dalla app)
-│ ├─ prod_interactions.csv # log interazioni app Prod (si crea/scrive dalla app)
-│ ├─ grid_search_results/
-│ │ ├─ LightGBM_optimized_model.pkl # miglior modello sklearn (se presente)
-│ │ ├─ best_keras_model.(keras|h5) # miglior modello keras (se presente)
-│ │ ├─ scaler.pkl # scaler per inference (se presente)
-│ │ └─ model_meta.json # meta: feature_order, punteggi, ecc.
-│ └─ metrics/ # report generati dalle app/notebook
-│ ├─ weekly_report.csv
-│ ├─ by_model_report.csv
-│ └─ confusion_matrix_overall.csv
+## 📂 Struttura della repository
+repo/
+├─ streamlit_prod/ # app di produzione
+│ ├─ main_streamlit_prod.py # form + contatti + mappa + chatbot + logging
+│ └─ chatbot.py # modulo chatbot (OpenAI API + RAG opzionale)
 │
-├─ notebooks/
-│ ├─ data_analysis.ipynb
-│ └─ prod_interactions_analysis.ipynb # EDA semplice sul log di produzione
-│
-├─ src/
-│ ├─ init.py
-│ ├─ data_preprocessing.py
-│ ├─ grid_search.py
-│ ├─ main.py
-│ ├─ model_training.py
-│ ├─ refresh_db_table.py
-│ ├─ utils.py
-│ └─ from_streamlit/metrics_report.py
-│
-├─ streamlit_test/
+├─ streamlit_test/ # app di test/monitoraggio
 │ └─ main_streamlit_test.py
 │
-├─ streamlit_prod/
-│ └─ main_streamlit_prod.py
+├─ src/
+│ ├─ main.py # orchestratore end-to-end (training → artefatti)
+│ ├─ utils.py # funzioni di preprocess e inferenza
+│ ├─ data_preprocessing.py # pipeline preparazione dati
+│ ├─ model_training.py # addestramento e salvataggio modelli
+│ ├─ grid_search.py # ricerca iperparametri
+│ ├─ build_gold_dataset.py # costruzione dataset dai feedback validati
+│ └─ from_streamlit/metrics_report.py # report metriche da feedback_test.csv
 │
-├─ requirements.txt / pyproject.toml / uv.lock
-├─ .python-version (se presente)
-└─ README.md
+├─ data/
+│ ├─ diabete_data.csv # dataset storico
+│ ├─ ospedali_milano_comuni_mapping.csv # comuni → strutture sanitarie
+│ ├─ prod_interactions.csv # log produzione
+│ ├─ feedback_test.csv # feedback test
+│ ├─ grid_search_results/ # modelli e meta info
+│ ├─ metrics/ # report automatici
+│ └─ gold/ # dataset finale dai feedback
+│
+├─ notebooks/
+│ ├─ data_analysis.py # analisi iniziale dataset
+│ └─ prod_interactions_analysis.py # analisi visiva log produzione
+│
+├─ requirements.txt # dipendenze
+├─ .env # variabili API (non versionato)
+└─ README.md # questo file
 
+yaml
+Copy
+Edit
 
 ---
 
-## 🧰 Requisiti
+## ⚙️ Installazione
 
-- **Python** 3.10+ (consigliato 3.11/3.12)  
-- Librerie da `requirements.txt` (o `pyproject.toml`)  
-- (Opzionale) **Git** configurato per commit automatici dei CSV dalla app di test  
-
-### Installazione
-
+### 1. Clona la repo
 ```bash
-# creare e attivare un venv
+git clone <repo_url>
+cd repo
+2. Crea ambiente virtuale
+
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+# Linux/Mac
+source .venv/bin/activate
+# Windows
+.venv\Scripts\activate
+3. Installa dipendenze
 
-# installare i pacchetti
 pip install -r requirements.txt
-▶️ Avviare le app
-1) Ambiente TEST
-Flusso: Home → Form → Monitoraggio
+🚀 Utilizzo
+1. Genera il modello (prima delle app)
 
-Salva i feedback in data/feedback_test.csv (se non esiste, la app lo crea).
+python -m src.main
+Artefatti salvati in data/grid_search_results/:
 
-Genera report in data/metrics/.
+modello (.pkl o .keras)
 
-bash
-Copy
-Edit
-streamlit run streamlit_test/main_streamlit_test.py
-📌 Note:
+model_meta.json (include ordine delle feature)
 
-La pagina Monitoraggio rigenera i report se mancano.
+scaler.pkl se previsto
 
-Supporto opzionale al commit automatico su GitHub dei CSV (vedi sezione Git auto-sync).
+2. Avvia app di produzione
 
-2) Ambiente PRODUZIONE
-UI più curata, mostra classe + probabilità.
-
-Ricerca contatti ospedalieri per comune (data/ospedali_milano_comuni_mapping.csv) con mappa.
-
-Log interazioni in data/prod_interactions.csv (crea e appende automaticamente).
-
-bash
-Copy
-Edit
 streamlit run streamlit_prod/main_streamlit_prod.py
-📌 Suggerimenti:
+Funzionalità:
 
-Verifica che data/ospedali_milano_comuni_mapping.csv contenga le colonne attese:
+Form di predizione (BMI calcolato automaticamente).
 
-Copy
-Edit
-Comune, Ospedale di riferimento, Indirizzo Ospedale, Telefono,
-Prenotazioni/CUP, Note, lat, lon
-La mappa si centra su Milano; quando selezioni un comune, lo zoom si aggiorna.
+Esito rischio con messaggi prudenziali.
 
-🧠 Modelli & Pipeline
-Gestione modello migliore → src/utils.py:
+Rubrica strutture sanitarie con mappa.
 
-legge data/grid_search_results/model_meta.json (feature_order, punteggi, tipo modello).
+Chatbot (OpenAI, opzionale).
 
-carica LightGBM_optimized_model.pkl (sklearn) o best_keras_model.(keras|h5) (Keras) + scaler.
+Logging locale e su DB cloud (AlwaysData).
 
-inferenza coerente con preprocess_for_inference(...).
+3. Avvia app di test/monitoraggio
 
-Training pipeline:
+streamlit run streamlit_test/main_streamlit_test.py
+Funzionalità:
 
-src/grid_search.py → ricerca modelli e salvataggio artefatti.
+Predizione demo + raccolta feedback.
 
-src/model_training.py → funzioni di training.
+Reportistica (weekly_report.csv, by_model_report.csv, confusion_matrix_overall.csv).
 
-src/main.py → pipeline end-to-end.
+🤖 Chatbot
+Configurazione .env:
 
-🧾 Dati salvati dalle app
-Test → data/feedback_test.csv
-Esempio colonne:
 
-sql
-Copy
-Edit
-HighBP, HighChol, CholCheck, BMI, Smoker, Stroke, HeartDiseaseorAttack,
-PhysActivity, Fruits, Veggies, HvyAlcoholConsump, AnyHealthcare, NoDocbcCost,
-GenHlth, MentHlth, PhysHlth, DiffWalk, Sex, Age, Education, Income,
-Predicted, Diabetes_012, timestamp, model_type, model_artifact
-Produzione → data/prod_interactions.csv
-Esempio colonne:
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+Esempio test:
 
-sql
-Copy
-Edit
-timestamp, session_id, event_type, HighBP, HighChol, CholCheck, BMI, Smoker,
-Stroke, HeartDiseaseorAttack, PhysActivity, Fruits, Veggies, HvyAlcoholConsump,
-AnyHealthcare, NoDocbcCost, GenHlth, MentHlth, PhysHlth, DiffWalk, Sex, Age,
-Education, Income, predicted_class, probability, comune, ospedale, telefono,
-indirizzo, prenotazioni, note
-Report (monitor) → data/metrics/
-weekly_report.csv
 
-by_model_report.csv
+python streamlit_prod/chatbot.py --test "Cos'è il diabete di tipo 2?"
+📊 Notebook disponibili
+data_analysis.py → analisi esplorativa dataset.
 
-confusion_matrix_overall.csv
+prod_interactions_analysis.py → analisi visiva log di produzione.
 
-📒 Notebook
-notebooks/prod_interactions_quick_eda.ipynb
-EDA rapida con:
+☁️ Deploy gratuito (demo)
+Possibile deploy su Render o Streamlit Cloud.
 
-conteggi eventi per tipo,
+Comando start:
 
-trend giornalieri,
 
-torta classi predette,
+streamlit run streamlit_prod/main_streamlit_prod.py --server.port $PORT --server.address 0.0.0.0
+Richiede artefatti già presenti in data/grid_search_results/.
 
-top comuni,
+🛠️ Troubleshooting
+Mancano gli artefatti → eseguire python -m src.main.
 
-tempo prediction → primo contact_view,
+Colonne disallineate → usare preprocess_for_inference() in src/utils.py.
 
-export CSV sintesi in data/metrics/.
+Problemi Git → git pull --rebase e risoluzione conflitti.
 
-📌 Nei notebook __file__ non esiste → incluso un helper che risale le cartelle fino a trovare data/ e src/.
+Chatbot non risponde → verificare .env e crediti API.
 
-☁️ DB Cloud (opzionale)
-Supporto a DB remoto (PostgreSQL/MySQL) via src/refresh_db_table.py.
+📅 Roadmap
+Miglioramento pagina Analytics (log produzione).
 
-Non obbligatorio → per semplicità, attualmente si usano CSV locali.
+Active Learning basato su incertezza.
 
-🔄 Git auto-sync (opzionale)
-Nella app Test, utility che tenta:
+Dashboard BI collegata a DB cloud.
 
-bash
-Copy
-Edit
-git add <file>
-git commit -m "<msg>"
-git pull --rebase origin main
-git push origin main
-Per funzionare:
+Estensione chatbot con citazioni e RAG migliorato.
 
-Git deve essere installato.
-
-Remote origin → GitHub configurato.
-
-Credenziali/token disponibili.
-
-Se non configurato, i CSV vengono comunque salvati in locale (UI mostra un toast di warning).
-
-🧩 Convenzioni & scelte progettuali
-Path robusti:
-
-Script/Streamlit → PROJECT_ROOT = Path(__file__).resolve().parents[1].
-
-Notebook → helper che risale fino a data/ e src/.
-
-Separazione ambienti:
-
-Test = sperimentazione + monitoraggio (feedback_test.csv).
-
-Prod = UI pulita e centrata sull’utente (prod_interactions.csv).
-
-Tracciabilità: CSV di test/prod permettono analisi utilizzo + qualità predizioni.
-
-Ospedali/contatti: file unico data/ospedali_milano_comuni_mapping.csv.
-
-UI design: pulsanti centrati, card, badge, mappe, popup raccomandazioni per classe/probabilità.
-
-🐞 Troubleshooting veloce
-CSV non aggiornato su GitHub → salvataggio locale ≠ push.
-Usa auto-sync (se configurato) o git add/commit/push manuale.
-
-Notebook non trova i file → lancia kernel da notebooks/ o root.
-Oppure usa l’helper incluso.
-
-Mappa contatti vuota → controlla data/ospedali_milano_comuni_mapping.csv e i nomi colonne.
-Per zoom su comune, includi lat/lon.
+📖 Licenza
+MIT — uso libero per scopi educativi e di ricerca.
