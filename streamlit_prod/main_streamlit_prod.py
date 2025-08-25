@@ -704,8 +704,8 @@ def render_floating_chat():
             if not st.session_state.chat_history:
                 # Primo messaggio dell'assistente in NERO per leggibilità
                 st.session_state.chat_history = [("assistant",
-                    "Ciao! Posso aiutarti a capire **a cosa serve il sito**, come usarlo (form/contatti) "
-                    "e rispondere a **domande sul diabete in generale**. Scrivimi qui sotto. 🙂")]
+                    "Ciao! Posso aiutarti a capire a cosa serve il sito, come usarlo (form/contatti) "
+                    "e rispondere a domande sul diabete in generale. Scrivimi qui sotto. 🙂")]
 
             for role, content in st.session_state.chat_history:
                 bubble_bg = "#eef2ff" if role == "assistant" else "#e0f2fe"
