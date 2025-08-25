@@ -14,13 +14,24 @@ except Exception:
 from sklearn.feature_extraction.text import TfidfVectorizer  # scikit-learn già nel progetto
 from sklearn.metrics.pairwise import cosine_similarity
 
-# DeepSeek via client OpenAI-compatibile
-from openai import OpenAI  # pip install openai
+# chatbot.py (testa del file)
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+from openai import OpenAI
 
-# === CONFIG API (al momento come da tua richiesta, in chiaro) ===
-DEEPSEEK_API_KEY  = 'sk-b5aec58aa1384eaf8e1b769b646adb58'
-DEEPSEEK_MODEL   = "deepseek-chat"            # oppure "deepseek-reasoner"
-DEEPSEEK_BASEURL = "https://api.deepseek.com"
+ROOT = Path(__file__).resolve().parents[1]  # cartella progetto
+load_dotenv(ROOT / ".env")                  # carica .env dalla root del repo
+
+API_KEY  = os.getenv("DEEPSEEK_API_KEY")
+BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+MODEL    = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+
+if not API_KEY:
+    raise RuntimeError("DEEPSEEK_API_KEY mancante nel .env")
+
+client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+
 
 # === PATHS ===
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -28,7 +39,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 PDF_PATH = DATA_DIR / "CS-PANORAMA-DIABETE-LANCIO-DEF.pdf"
 
 # === CLIENT ===
-_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASEURL)
+_client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
 
 # === INDICE PDF (TF-IDF) ===
 _vectorizer: Optional[TfidfVectorizer] = None
@@ -102,7 +113,7 @@ def _retrieve(query: str, k: int = 4) -> List[str]:
 
 def _deepseek_chat(messages: List[Dict[str, str]], temperature: float = 0.6, max_tokens: int = 600) -> str:
     resp = _client.chat.completions.create(
-        model=DEEPSEEK_MODEL,
+        model=MODEL,
         messages=messages,
         temperature=temperature,
         max_tokens=max_tokens,
