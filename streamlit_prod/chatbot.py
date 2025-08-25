@@ -138,3 +138,31 @@ def answer_with_rag(user_question: str, site_faq: str = "") -> str:
 
 # Costruisce l’indice al primo import
 build_pdf_index(force=True)
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Test rapido chatbot DeepSeek + RAG PDF")
+    parser.add_argument("--test", type=str, help="Domanda da fare al chatbot")
+    parser.add_argument("--reindex", action="store_true", help="Ricostruisci l'indice del PDF")
+    parser.add_argument("--debug", action="store_true", help="Mostra info su .env e PDF")
+    args = parser.parse_args()
+
+    if args.debug:
+        print(f".env: {'OK' if API_KEY else 'MANCANTE'}  | MODEL: {MODEL}")
+        print(f"PDF atteso: {PDF_PATH}  | Esiste: {PDF_PATH.exists()}")
+
+    if args.reindex:
+        ok, msg = build_pdf_index(force=True)
+        print(msg)
+
+    if args.test:
+        # Mini-FAQ del sito: aiuta a rispondere su come usare l’app
+        faq = (
+            "Questo sito stima il rischio (0/1/2) e mostra i contatti ospedalieri per comune. "
+            "Per usare il form: compila i campi, premi 'Calcola risultato' e, se vuoi, cerca i contatti. "
+            "Non fornisce diagnosi mediche."
+        )
+        print("Q:", args.test)
+        ans = answer_with_rag(args.test, site_faq=faq)
+        print("A:", ans)
