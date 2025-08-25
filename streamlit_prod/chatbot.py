@@ -108,7 +108,7 @@ def build_pdf_index(force: bool = False) -> Tuple[bool, str]:
         _vectorizer, _doc_matrix = None, None
         return False, "Nessun contenuto indicizzabile nel PDF."
 
-    _vectorizer = TfidfVectorizer(stop_words="italian")
+    _vectorizer = TfidfVectorizer(stop_words=None)
     _doc_matrix = _vectorizer.fit_transform(_chunks)
     return True, f"Indicizzate {len(_chunks)} sezioni dal PDF."
 
