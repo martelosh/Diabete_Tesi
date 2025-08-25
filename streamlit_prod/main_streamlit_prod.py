@@ -15,12 +15,11 @@ import pandas as pd
 import streamlit as st
 import pydeck as pdk
 
-# === Chat RAG (DeepSeek) ===
-# Richiede: chatbot.py nella root repo e .env con DEEPSEEK_API_KEY
+# === Chat RAG (DeepSeek/OpenAI via wrapper in chatbot.py) ===
 try:
-    from streamlit_prod.chatbot import answer_with_rag, build_pdf_index  # usa il PDF e le FAQ del sito
+    from streamlit_prod.chatbot import answer_with_rag  # funzione RAG
 except Exception as _e:
-    answer_with_rag = None  # fallback: disabilita chat se non disponibile
+    answer_with_rag = None
     _CHAT_IMPORT_ERROR = str(_e)
 else:
     _CHAT_IMPORT_ERROR = ""
@@ -115,11 +114,31 @@ div[data-testid="stExpander"]:last-of-type > details{
   border-radius: 14px;
   box-shadow: 0 16px 38px rgba(16,24,40,.18);
   overflow: hidden;
+  border: 1px solid rgba(16,24,40,.12);
 }
+/* quando è chiuso diventa un pallino (larghezza stretta) */
+div[data-testid="stExpander"]:last-of-type > details:not([open]) {
+  width: 58px;
+}
+
+/* Header dell'expander = bottone della chat */
 div[data-testid="stExpander"]:last-of-type .streamlit-expanderHeader{
-  background: linear-gradient(90deg, #0ea5e9, #6366f1);
-  color: #fff; font-weight: 800;
+  background: #ffffff;
+  color: #111 !important;
+  font-weight: 800;
+  padding:.6rem .8rem;
+  display:flex; align-items:center; gap:.5rem;
+  border-bottom: 1px solid rgba(16,24,40,.06);
 }
+div[data-testid="stExpander"]:last-of-type .streamlit-expanderHeader p{
+  margin:0;
+}
+div[data-testid="stExpander"]:last-of-type .streamlit-expanderHeader:before{
+  content: "💬";
+  display:inline-block; font-size: 1.05rem;
+}
+
+/* Corpo chat */
 div[data-testid="stExpander"]:last-of-type [data-testid="stMarkdownContainer"]{
   max-height: 42vh; overflow: auto;
   padding-right: .25rem;
@@ -136,7 +155,7 @@ div[data-testid="stExpander"]:last-of-type .stButton>button{
 @media (prefers-color-scheme: dark){
   html, body { background: #0f1117; }
   .hero-wow{ border-color: rgba(255,255,255,.08); background: linear-gradient(180deg,#0f1117,#12131a); color:#e9e9ea }
-  .card{ background:#12131a; color:#e9e9ea; border-color: rgba(255,255,255,.08) }
+  .card{ background:#12131a; color:#e9e9ea; border-color: rgba(255,255,255,.08); }
   .prob-wrap{ border-color: rgba(255,255,255,.1); background: #141722; }
 }
 </style>
@@ -147,9 +166,9 @@ CONTACTS_CSV = PROJECT_ROOT / "data" / "ospedali_milano_comuni_mapping.csv"
 LOG_CSV      = PROJECT_ROOT / "data" / "prod_interactions.csv"
 MILANO_LAT, MILANO_LON = 45.4642, 9.1900
 
-# Auto-commit/push via git CLI (senza env/token). Lascia True.
+# Auto-commit/push via git CLI (senza env/token).
 GIT_AUTOCOMMIT_ENABLED = True
-GIT_BRANCH = "main"  # cambia se usi un branch diverso
+GIT_BRANCH = "main"
 
 # ========== UTILS NORMALIZZAZIONE ==========
 def _slug(s: str) -> str:
@@ -163,7 +182,7 @@ def _norm_text(s: str) -> str:
     s = str(s)
     s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
     s = s.casefold()
-    s = re.sub(r"\s+", " ", s).strip()  # ← fix regex
+    s = re.sub(r"\s+", " ", s).strip()
     return s
 
 def _canonicalize_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -219,7 +238,8 @@ st.session_state.setdefault("sid", str(uuid4()))
 st.session_state.setdefault("chat_history", [])  # [(role, content), ...]
 st.session_state.setdefault("chat_input", "")
 
-def go(view: str): st.session_state.view = view
+def go(view: str):
+    st.session_state.view = view
 
 # ========== LOG CSV ==========
 LOG_COLUMNS = [
@@ -668,8 +688,8 @@ _SITE_FAQ = (
 )
 
 def render_floating_chat():
-    """Expander flottante sempre visibile in basso a destra."""
-    label = "💬 Assistente"
+    """Expander flottante sempre visibile in basso a destra (pallino chiuso, finestra quando aperto)."""
+    label = " "  # lasciamo vuoto: l'icona 💬 viene inserita via CSS nell'header
     with st.expander(label, expanded=False):
         if _CHAT_IMPORT_ERROR:
             st.warning(f"Chat non disponibile: {_CHAT_IMPORT_ERROR}")
@@ -677,18 +697,20 @@ def render_floating_chat():
             st.warning("Chat non disponibile (modulo chatbot mancante).")
         else:
             if not st.session_state.chat_history:
+                # Primo messaggio dell'assistente in NERO per leggibilità
                 st.session_state.chat_history = [("assistant",
-                    "Ciao! Posso aiutarti a usare il sito o rispondere a domande sul documento fornito. "
-                    "Scrivi una domanda qui sotto. 👍")]
+                    "Ciao! Posso aiutarti a capire **a cosa serve il sito**, come usarlo (form/contatti) "
+                    "e rispondere a **domande sul diabete in generale**. Scrivimi qui sotto. 🙂")]
 
             for role, content in st.session_state.chat_history:
                 bubble_bg = "#eef2ff" if role == "assistant" else "#e0f2fe"
+                align = "flex-start" if role == "assistant" else "flex-end"
                 st.markdown(
                     f"""
-                    <div style="display:flex; justify-content:{'flex-start' if role=='assistant' else 'flex-end'}; margin:.2rem 0">
+                    <div style="display:flex; justify-content:{align}; margin:.2rem 0">
                       <div style="max-width:90%; background:{bubble_bg}; padding:.6rem .75rem; border-radius:12px; box-shadow:0 1px 3px rgba(16,24,40,.12)">
-                        <div style="opacity:.7; font-size:.8rem; margin-bottom:.15rem">{'Assistente' if role=='assistant' else 'Tu'}</div>
-                        <div style="white-space:pre-wrap">{content}</div>
+                        <div style="opacity:.7; font-size:.8rem; margin-bottom:.15rem; color:#111">{'Assistente' if role=='assistant' else 'Tu'}</div>
+                        <div style="white-space:pre-wrap; color:#111">{content}</div>
                       </div>
                     </div>
                     """,
