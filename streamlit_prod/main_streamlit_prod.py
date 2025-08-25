@@ -18,7 +18,7 @@ import pydeck as pdk
 # === Chat RAG (DeepSeek) ===
 # Richiede: chatbot.py nella root repo e .env con DEEPSEEK_API_KEY
 try:
-    from chatbot import answer_with_rag  # usa il PDF e le FAQ del sito
+    from streamlit_prod.chatbot import answer_with_rag, build_pdf_index  # usa il PDF e le FAQ del sito
 except Exception as _e:
     answer_with_rag = None  # fallback: disabilita chat se non disponibile
     _CHAT_IMPORT_ERROR = str(_e)
