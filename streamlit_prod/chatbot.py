@@ -158,7 +158,6 @@ if __name__ == "__main__":
         print(msg)
 
     if args.test:
-        # Mini-FAQ del sito: aiuta a rispondere su come usare l’app
         faq = (
             "Questo sito stima il rischio (0/1/2) e mostra i contatti ospedalieri per comune. "
             "Per usare il form: compila i campi, premi 'Calcola risultato' e, se vuoi, cerca i contatti. "
