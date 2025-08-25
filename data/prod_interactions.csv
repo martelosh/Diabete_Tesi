@@ -5,3 +5,4 @@ timestamp,session_id,event_type,HighBP,HighChol,CholCheck,BMI,Smoker,Stroke,Hear
 2025-08-24T23:54:39,9655f3b4-bbad-4869-91b8-ba3254a733d5,prediction,0,0,0,24.2,0,0,0,0,0,0,0,0,0,3,2,2,0,0,40,4,4,0,0.9316,,,,,,
 2025-08-24T23:55:44,9655f3b4-bbad-4869-91b8-ba3254a733d5,contact_view,0,0,0,24.2,0,0,0,0,0,0,0,0,0,3,2,2,0,0,40,4,4,0,0.9316,Arconate,Sacco (ASST Fatebenefratelli Sacco),+39 02 3904.1 (centralino),"Via Giovanni Battista Grassi 74, Milano",Numero Verde Regionale: 800 638 638 (fisso) / 02 99 95 99 (mobile),Nord-ovest Milano
 2025-08-25T21:56:30,4b83e60f-309b-44ae-a23f-58074b739b90,prediction,0,0,0,24.2,0,0,0,0,0,0,0,0,0,3,2,2,0,0,40,4,4,0,0.9316,,,,,,
+2025-08-25T22:02:29,edd3334c-f0fe-49f5-857b-a94f2ccbda0f,prediction,0,0,0,24.2,0,0,0,0,0,0,0,0,0,3,2,2,0,0,40,4,4,0,0.9316,,,,,,
