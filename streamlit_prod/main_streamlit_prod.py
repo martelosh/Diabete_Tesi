@@ -726,13 +726,20 @@ def render_floating_chat():
                 q = st.text_input("Scrivi qui la tua domanda…", value=st.session_state.get("chat_input",""))
                 send = st.form_submit_button("Invia")
             if send and q.strip():
-                st.session_state.chat_history.append(("user", q.strip()))
+                user_q = q.strip()
+                st.session_state.chat_history.append(("user", user_q))
                 try:
-                    ans = answer_with_rag(q.strip(), site_faq=_SITE_FAQ)
+                    ans = answer_with_rag(user_q, site_faq=_SITE_FAQ)
                 except Exception as e:
                     ans = f"⚠️ Errore: {e}"
                 st.session_state.chat_history.append(("assistant", ans))
                 st.session_state.chat_input = ""
+
+                # forza il re-render per mostrare SUBITO la nuova risposta
+                try:
+                    st.rerun()
+                except Exception:
+                    st.experimental_rerun()
 
 # ========== ROUTING ==========
 if st.session_state.view == "home":
