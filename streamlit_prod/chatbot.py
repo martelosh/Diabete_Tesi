@@ -20,8 +20,8 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 # Root del progetto (cartella repo)
-ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(ROOT / ".env")
+ROOT = Path(__file__).resolve().parents[1]      # <- cartella progetto (Diabete)
+load_dotenv(ROOT / ".env")                      # carica .env dalla root del repo
 
 API_KEY  = os.getenv("DEEPSEEK_API_KEY")
 BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
@@ -32,8 +32,9 @@ if not API_KEY:
 
 client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
 
-# === Percorsi ===
-DATA_DIR = ROOT / "data"
+# Percorsi dati
+PROJECT_ROOT = ROOT
+DATA_DIR = PROJECT_ROOT / "data"
 PDF_PATH = DATA_DIR / "CS-PANORAMA-DIABETE-LANCIO-DEF.pdf"
 
 # === Indice TF-IDF del PDF ===
