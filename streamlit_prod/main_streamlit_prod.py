@@ -168,7 +168,7 @@ div[data-testid="stExpander"]:last-of-type .stButton>button{
 
 # ========== FILES & CONFIG ==========
 CONTACTS_CSV = PROJECT_ROOT / "data" / "ospedali_milano_comuni_mapping.csv"
-LOG_CSV      = PROJECT_ROOT / "data" / "prod_interactions.csv"
+LOG_CSV      = PROJECT_ROOT / "data" / "prod_interactions_v1.csv"
 MILANO_LAT, MILANO_LON = 45.4642, 9.1900
 
 # Auto-commit/push via git CLI
