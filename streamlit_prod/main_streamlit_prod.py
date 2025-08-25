@@ -15,6 +15,10 @@ import pandas as pd
 import streamlit as st
 import pydeck as pdk
 
+# ==== Chatbot (DeepSeek RAG su PDF + FAQ) ====
+# richiede: chatbot.py nella root (già incollato) e pacchetti openai + pypdf/PyPDF2
+from chatbot import answer_with_rag
+
 # ========== PATH & IMPORT ==========
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -28,7 +32,7 @@ st.markdown("""
 <style>
 html, body { background: #f6f7fb; }
 div.block-container{
-  /* ↑ più spazio sopra, senza esagerare */
+  /* spazio sopra/basso comodo */
   padding: 1.8rem 1rem 1.4rem !important;
   max-width: 1480px !important;
 }
@@ -97,11 +101,34 @@ header [data-testid="baseButton-headerNoPadding"]{visibility:hidden}
 /* Row azioni centrata */
 .action-center{ display:flex; justify-content:center; gap:1rem; margin:.6rem 0 0; }
 
+/* ---- Floating Chatbot ---- */
+div[data-testid="stVerticalBlock"]:has(#chatbot-anchor){
+  position: fixed; right: 18px; bottom: 18px; width: 360px; z-index: 1000;
+}
+.chat-fab .stButton>button{
+  border-radius: 999px; width: 56px; height: 56px; font-size: 24px; padding: 0;
+  box-shadow: 0 10px 26px rgba(16,24,40,.25);
+}
+.chatbox{
+  border:1px solid rgba(16,24,40,.12); background:#fff; border-radius:16px;
+  box-shadow: 0 18px 38px rgba(16,24,40,.18); padding:.6rem;
+}
+.chat-header{ display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:.4rem }
+.chat-messages{ max-height: 300px; overflow:auto; padding:.25rem }
+.msg-user{ background:#e8f0fe; border-radius:12px 12px 2px 12px; padding:.45rem .6rem; margin:.25rem 0 }
+.msg-bot{ background:#f6f7fb; border-radius:12px 12px 12px 2px; padding:.45rem .6rem; margin:.25rem 0 }
+.chat-input-row{ display:flex; gap:.35rem; align-items:center; margin-top:.4rem }
+.chat-input-row .stTextInput>div>div>input{ height: 38px }
+.chat-input-row .stButton>button{ height:38px }
+
+/* Dark mode */
 @media (prefers-color-scheme: dark){
   html, body { background: #0f1117; }
   .hero-wow{ border-color: rgba(255,255,255,.08); background: linear-gradient(180deg,#0f1117,#12131a); color:#e9e9ea }
   .card{ background:#12131a; color:#e9e9ea; border-color: rgba(255,255,255,.08) }
   .prob-wrap{ border-color: rgba(255,255,255,.1); background: #141722; }
+  .chatbox{ background:#0f121a; border-color: rgba(255,255,255,.12) }
+  .msg-bot{ background:#12141c; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -111,9 +138,17 @@ CONTACTS_CSV = PROJECT_ROOT / "data" / "ospedali_milano_comuni_mapping.csv"
 LOG_CSV      = PROJECT_ROOT / "data" / "prod_interactions.csv"
 MILANO_LAT, MILANO_LON = 45.4642, 9.1900
 
-# Auto-commit/push via git CLI (senza env/token). Lascia True.
+# Auto-commit/push via git CLI (best-effort)
 GIT_AUTOCOMMIT_ENABLED = True
-GIT_BRANCH = "main"  # cambia se usi un branch diverso
+GIT_BRANCH = "main"
+
+# FAQ contestuali per il chatbot
+SITE_FAQ = """\
+- Scopo: stimare il rischio (classi 0/1/2) e mostrare contatti ospedalieri per comune.
+- Come usare: vai su “Form”, compila i campi; ottieni il risultato e la probabilità. In “Contatti” cerca il tuo comune.
+- Privacy: i dati di produzione vengono loggati in data/prod_interactions.csv (solo per analisi aggregate).
+- Avvertenza: il sito non fornisce diagnosi medica; per dubbi contatta il medico.
+"""
 
 # ========== UTILS NORMALIZZAZIONE ==========
 def _slug(s: str) -> str:
@@ -180,6 +215,11 @@ st.session_state.setdefault("last_prob", None)
 st.session_state.setdefault("last_form", None)
 st.session_state.setdefault("selected_comune", None)
 st.session_state.setdefault("sid", str(uuid4()))
+
+# Chatbot state
+st.session_state.setdefault("chat_open", False)
+st.session_state.setdefault("chat_history", [])  # list[{"role":"user"/"assistant","content": "..."}]
+
 def go(view: str): st.session_state.view = view
 
 # ========== LOG CSV ==========
@@ -203,7 +243,7 @@ def _bootstrap_log():
 
 _bootstrap_log()
 
-# --- Git auto-commit/push (best-effort, silenzioso) ---
+# --- Git auto-commit/push (best-effort) ---
 def _run_git(cmd: list[str]) -> tuple[int, str]:
     try:
         p = subprocess.run(
@@ -312,7 +352,6 @@ def predict_with_proba(model, model_type: str, X: pd.DataFrame):
 
 # ========== HOME ==========
 def render_home():
-    # piccolo spacer globale
     st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
 
     st.markdown(
@@ -432,7 +471,6 @@ def show_contacts_ui():
         )
 
 def render_contacts():
-    # piccolo spacer globale
     st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
 
     top = st.columns([1,3])[0]
@@ -515,7 +553,6 @@ def render_contacts():
 
 # ========== FORM ==========
 def render_form():
-    # piccolo spacer globale
     st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
 
     top = st.columns([1,3])[0]
@@ -612,6 +649,63 @@ def render_form():
             st.warning("⚠️ **Rischio medio/alto** — è **fortemente consigliato** prenotare un **controllo medico**.")
         st.button("🔎 Cerca contatti ospedale", use_container_width=True, on_click=lambda: go("contacts"))
 
+# ========== FLOATING CHATBOT ==========
+def render_chatbot():
+    # L'ancora serve al CSS :has() per rendere **fisso** questo blocco
+    host = st.container()
+    with host:
+        st.markdown('<div id="chatbot-anchor"></div>', unsafe_allow_html=True)
+
+        # Se chiuso: mostra solo il FAB
+        if not st.session_state.chat_open:
+            col = st.container()
+            with col:
+                st.markdown('<div class="chat-fab">', unsafe_allow_html=True)
+                if st.button("💬", key="open_chat_fab"):
+                    st.session_state.chat_open = True
+                    st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+            return
+
+        # Aperto: mostra box chat
+        with st.container(border=False):
+            st.markdown('<div class="chatbox">', unsafe_allow_html=True)
+            c1, c2 = st.columns([1,0.15])
+            with c1:
+                st.markdown("**Assistente** · FAQ sito + PDF (RAG)")
+            with c2:
+                if st.button("✖", key="close_chat_box"):
+                    st.session_state.chat_open = False
+                    st.rerun()
+
+            # Messaggi
+            msgs = st.session_state.chat_history
+            st.markdown('<div class="chat-messages">', unsafe_allow_html=True)
+            if not msgs:
+                st.markdown('<div class="msg-bot">Ciao! Posso aiutarti a usare il sito o rispondere su temi del diabete dal PDF allegato. ✨</div>', unsafe_allow_html=True)
+            else:
+                for m in msgs:
+                    cls = "msg-user" if m["role"] == "user" else "msg-bot"
+                    st.markdown(f'<div class="{cls}">{m["content"]}</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            # Input + invio
+            st.markdown('<div class="chat-input-row">', unsafe_allow_html=True)
+            q = st.text_input("Scrivi un messaggio", key="chat_input", label_visibility="collapsed", placeholder="Es: Come compilo il form?")
+            send = st.button("Invia", key="send_chat")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            if send and q.strip():
+                st.session_state.chat_history.append({"role":"user","content": q.strip()})
+                try:
+                    a = answer_with_rag(q.strip(), site_faq=SITE_FAQ)
+                except Exception as e:
+                    a = f"⚠️ Errore nel chatbot: {e}"
+                st.session_state.chat_history.append({"role":"assistant","content": a})
+                st.rerun()
+
+            st.markdown('</div>', unsafe_allow_html=True)  # /chatbox
+
 # ========== ROUTING ==========
 if st.session_state.view == "home":
     render_home()
@@ -621,3 +715,6 @@ elif st.session_state.view == "contacts":
     render_contacts()
 else:
     go("home"); render_home()
+
+# Chatbot visibile su TUTTE le pagine
+render_chatbot()
