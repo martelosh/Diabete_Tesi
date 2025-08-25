@@ -51,3 +51,7 @@ Thumbs.db
 *.toml
 *.yml
 *.yaml
+
+!data/
+!data/grid_search_results/
+!data/grid_search_results/**
