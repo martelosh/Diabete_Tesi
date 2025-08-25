@@ -72,15 +72,23 @@ source .venv/bin/activate
 pip install -r requirements.txt
 🚀 Utilizzo
 1. Genera il modello (prima delle app)
+Per addestrare e scegliere il modello migliore, lanciare:
+
 
 python -m src.main
-Artefatti salvati in data/grid_search_results/:
+Questo script:
+
+Esegue preprocessing e training del modello.
+
+Salva gli artefatti in data/grid_search_results/:
 
 modello (.pkl o .keras)
 
 model_meta.json (include ordine delle feature)
 
 scaler.pkl se previsto
+
+⚠️ Nota: questo step è obbligatorio prima di avviare le app, altrimenti non troveranno il modello.
 
 2. Avvia app di produzione
 
