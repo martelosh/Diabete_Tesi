@@ -15,21 +15,36 @@ import pandas as pd
 import streamlit as st
 import pydeck as pdk
 
-# === Chat RAG (DeepSeek/OpenAI via wrapper in chatbot.py) ===
-try:
-    from streamlit_prod.chatbot import answer_with_rag  # funzione RAG
-except Exception as _e:
-    answer_with_rag = None
-    _CHAT_IMPORT_ERROR = str(_e)
-else:
-    _CHAT_IMPORT_ERROR = ""
-
-# ========== PATH & IMPORT ==========
+# ========== PATH & IMPORT BASE ==========
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.utils import load_best_model, preprocess_for_inference  # noqa: E402
+
+# === Chat RAG import (dopo sys.path, con fallback da file) ===
+_CHAT_IMPORT_ERROR = ""
+answer_with_rag = None
+try:
+    # prova come package (se la cartella è visibile come modulo)
+    from streamlit_prod.chatbot import answer_with_rag  # type: ignore
+except Exception as _e1:
+    try:
+        # fallback: importa direttamente dal file chatbot.py
+        import importlib.util, types
+        CHATBOT_PATH = Path(__file__).resolve().parent / "chatbot.py"
+        if CHATBOT_PATH.exists():
+            spec = importlib.util.spec_from_file_location("chatbot_module", CHATBOT_PATH)
+            mod = importlib.util.module_from_spec(spec)  # type: ignore
+            assert spec and spec.loader
+            spec.loader.exec_module(mod)  # type: ignore
+            answer_with_rag = getattr(mod, "answer_with_rag", None)
+            if answer_with_rag is None:
+                _CHAT_IMPORT_ERROR = "funzione answer_with_rag non trovata in chatbot.py"
+        else:
+            _CHAT_IMPORT_ERROR = f"chatbot.py non trovato in {CHATBOT_PATH}"
+    except Exception as _e2:
+        _CHAT_IMPORT_ERROR = f"{_e1} | {_e2}"
 
 # ========== PAGE CONFIG & THEME ==========
 st.set_page_config(page_title="Valutazione Rischio Diabete", page_icon="🩺", layout="wide")
@@ -116,10 +131,7 @@ div[data-testid="stExpander"]:last-of-type > details{
   overflow: hidden;
   border: 1px solid rgba(16,24,40,.12);
 }
-/* quando è chiuso diventa un pallino (larghezza stretta) */
-div[data-testid="stExpander"]:last-of-type > details:not([open]) {
-  width: 58px;
-}
+div[data-testid="stExpander"]:last-of-type > details:not([open]) { width: 58px; }
 
 /* Header dell'expander = bottone della chat */
 div[data-testid="stExpander"]:last-of-type .streamlit-expanderHeader{
@@ -130,25 +142,18 @@ div[data-testid="stExpander"]:last-of-type .streamlit-expanderHeader{
   display:flex; align-items:center; gap:.5rem;
   border-bottom: 1px solid rgba(16,24,40,.06);
 }
-div[data-testid="stExpander"]:last-of-type .streamlit-expanderHeader p{
-  margin:0;
-}
+div[data-testid="stExpander"]:last-of-type .streamlit-expanderHeader p{ margin:0; }
 div[data-testid="stExpander"]:last-of-type .streamlit-expanderHeader:before{
-  content: "💬";
-  display:inline-block; font-size: 1.05rem;
+  content: "💬"; display:inline-block; font-size: 1.05rem;
 }
 
 /* Corpo chat */
 div[data-testid="stExpander"]:last-of-type [data-testid="stMarkdownContainer"]{
-  max-height: 42vh; overflow: auto;
-  padding-right: .25rem;
+  max-height: 42vh; overflow: auto; padding-right: .25rem;
 }
-div[data-testid="stExpander"]:last-of-type .stTextInput>div>div>input{
-  font-size: .95rem;
-}
+div[data-testid="stExpander"]:last-of-type .stTextInput>div>div>input{ font-size: .95rem; }
 div[data-testid="stExpander"]:last-of-type .stButton>button{
-  width: 100%;
-  border-radius: 10px; font-weight: 750;
+  width: 100%; border-radius: 10px; font-weight: 750;
 }
 
 /* Dark mode */
@@ -166,7 +171,7 @@ CONTACTS_CSV = PROJECT_ROOT / "data" / "ospedali_milano_comuni_mapping.csv"
 LOG_CSV      = PROJECT_ROOT / "data" / "prod_interactions.csv"
 MILANO_LAT, MILANO_LON = 45.4642, 9.1900
 
-# Auto-commit/push via git CLI (senza env/token).
+# Auto-commit/push via git CLI
 GIT_AUTOCOMMIT_ENABLED = True
 GIT_BRANCH = "main"
 
@@ -689,7 +694,7 @@ _SITE_FAQ = (
 
 def render_floating_chat():
     """Expander flottante sempre visibile in basso a destra (pallino chiuso, finestra quando aperto)."""
-    label = " "  # lasciamo vuoto: l'icona 💬 viene inserita via CSS nell'header
+    label = " "  # l'icona 💬 viene inserita via CSS nell'header
     with st.expander(label, expanded=False):
         if _CHAT_IMPORT_ERROR:
             st.warning(f"Chat non disponibile: {_CHAT_IMPORT_ERROR}")
