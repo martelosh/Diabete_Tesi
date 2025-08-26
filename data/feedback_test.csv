@@ -4,3 +4,4 @@ HighBP,HighChol,CholCheck,BMI,Smoker,Stroke,HeartDiseaseorAttack,PhysActivity,Fr
 0,0,0,24.2,0,0,0,0,0,0,0,0,0,3,2,2,0,0,40,4,4,0,0,2025-08-24T18:25:37.061676+00:00,sklearn,LightGBM_optimized_model.pkl
 0,0,0,24.2,0,0,0,0,0,0,0,0,0,3,2,2,0,0,40,4,4,0,0,2025-08-24T18:32:26.786316+00:00,sklearn,LightGBM_optimized_model.pkl
 0,0,0,24.2,0,0,0,0,0,0,0,0,0,3,2,2,0,0,40,4,4,0,0,2025-08-26T08:10:38.862761+00:00,keras,best_keras_model.keras
+1,1,0,65.7,1,1,1,0,0,0,1,0,1,4,28,26,1,1,44,3,2,0,0,2025-08-26T18:26:35.953117+00:00,sklearn,LightGBM_optimized_model.pkl
