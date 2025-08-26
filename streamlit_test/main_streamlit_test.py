@@ -63,29 +63,40 @@ FEEDBACK = DATA_DIR / "feedback_test.csv"   # <<< unico cambio di percorso
 
 def _auto_git_sync(file_paths, commit_msg="Auto: update feedback_test.csv"):
     """
-    Aggiunge/committa/pusha automaticamente i file passati.
-    Richiede che le credenziali Git siano già configurate (vedi sotto).
+    Add/commit/pull --rebase --autostash/push dei file passati.
+    Se git fallisce, NON blocca il salvataggio locale.
     """
     try:
-        repo_root = PROJECT_ROOT  # radice repo
-        # Normalizza i path in relativi alla repo (Git preferisce così)
+        repo_root = PROJECT_ROOT
         rels = [str(Path(p).resolve().relative_to(repo_root)) for p in file_paths]
 
-        # Sequenza classica: add -> commit -> pull --rebase -> push
-        cmds = [
-            ["git", "add"] + rels,
+        # 1) assicurati di essere allineata col remoto (autostash evita l'errore che vedi)
+        subprocess.run(
+            ["git", "pull", "--rebase", "--autostash", "origin", "main"],
+            cwd=repo_root, check=False, capture_output=True
+        )
+        # 2) aggiungi (forzando in caso di .gitignore su data/)
+        subprocess.run(
+            ["git", "add", "-f"] + rels,
+            cwd=repo_root, check=True, capture_output=True
+        )
+        # 3) commit (se non c'è nulla da committare, non esplodiamo)
+        cp = subprocess.run(
             ["git", "commit", "-m", commit_msg],
-            ["git", "pull", "--rebase", "origin", "main"],
-            ["git", "push", "origin", "main"],
-        ]
-        for cmd in cmds:
-            subprocess.run(cmd, cwd=repo_root, check=True, capture_output=True)
-        st.toast("📤 Sincronizzato su GitHub.", icon="✅")
+            cwd=repo_root, check=False, capture_output=True, text=True
+        )
+        # 4) push (se c’è un commit)
+        if cp.returncode == 0:
+            subprocess.run(
+                ["git", "push", "origin", "main"],
+                cwd=repo_root, check=False, capture_output=True
+            )
+        st.toast("📤 Sincronizzato su GitHub (test).", icon="✅")
     except subprocess.CalledProcessError as e:
-        # Mostra errore ma NON blocca il salvataggio locale
         msg = (e.stderr or e.stdout or b"").decode(errors="ignore")
         st.toast("⚠️ Sync Git fallita (dati salvati solo in locale).", icon="⚠️")
         st.caption(f"Dettagli Git: {msg.strip()[:400]}")
+
 
 
 # === ROUTER STATO ===

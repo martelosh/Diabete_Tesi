@@ -291,13 +291,13 @@ def git_auto_commit_push(file_path: Path, message: str | None = None):
     if message is None:
         message = f"Auto-update {rel} — {datetime.now().isoformat(timespec='seconds')}"
 
-    _run_git(["git", "pull", "--rebase", "origin", GIT_BRANCH])
-    _run_git(["git", "add", rel])
+    _run_git(["git", "pull", "--rebase", "--autostash", "origin", GIT_BRANCH])  # << qui
+    _run_git(["git", "add", "-f", rel])                                         # << forza add
     code, out = _run_git(["git", "commit", "-m", message])
     if code != 0 and ("nothing to commit" in out.lower() or "no changes added to commit" in out.lower()):
         return
     _run_git(["git", "push", "origin", GIT_BRANCH])
-
+    
 def append_log_row(row: dict):
     try:
         LOG_CSV.parent.mkdir(parents=True, exist_ok=True)
